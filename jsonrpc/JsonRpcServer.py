@@ -1,7 +1,7 @@
 # JSON-RPC Server
-# author: Jesús Chacón <jcsombria@gmail.com>
+# author: Jesus Chacin <jcsombria@gmail.com>
 #
-# Copyright (C) 2013 Jesús Chacón
+# Copyright (C) 2013 Jesus Chacon
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,10 +16,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import ujson
-from jsonrpc.JsonRpcBuilder import JsonRpcBuilder
+from .JsonRpcBuilder import JsonRpcBuilder
 
 class JsonRpcServer(object):
   """Base class for defining a JSON-RPC v2.0 server."""
+
+  name = 'jsonrpcserver'
 
   PARSE_ERROR = {
     'code': -32700,
@@ -51,7 +53,9 @@ class JsonRpcServer(object):
     #   Reserved for implementation-defined server-errors.
   }
 
-  def __init__(self):
+  def __init__(self, name='JsonRpcServer', description='A good-looking and nice jsonrpc server for python.'):
+    self.name = name
+    self.description = description
     self.builder = JsonRpcBuilder()
     self.methods = {}
 
@@ -71,7 +75,7 @@ class JsonRpcServer(object):
           result.append(response)
     else:
       result = self.process(methodCall)
-    return result
+    return ujson.dumps(result)
 
   def process(self, request):
     """ Process a JSON-RPC request:
@@ -117,10 +121,23 @@ class JsonRpcServer(object):
     return self.builder.error_response(error, request_id)
 
   def on(self, method, expected, handler):
-    if not isinstance(expected, (int, set, list)):
+    if not isinstance(expected, (int, dict)):
       return False
-    self.methods[method] = Method(handler, expected)
+    self.methods[method] = Method(method, handler, expected)
 
+  def info(self):
+    return { 'info': [{
+      'name': self.name,
+      'description': self.description,
+      'methods': self.getMethods(),
+      'readable': {},
+      'writable': {},
+      }]
+    }
+
+  def getMethods(self):
+    methodList = [method.info() for method in self.methods.values()]
+    return methodList
 
 class InvocationException(Exception):
   """Exception raised for an error occurred during the invocation of a method
@@ -132,11 +149,14 @@ class InvocationException(Exception):
 
 
 class Method(object):
-  """Helper class to invoke a method and check the params
+  """Helper class to invoke a method and check the validity of the params
   """
-  def __init__(self, handler, params):
+  def __init__(self, name, handler, info):
+    self._name = name
     self._handler = handler
-    self._params = params
+    self._info = info
+    self._params = info.get('params')
+    self._description = info.get('description')
 
   def invoke(self, params):
     if not self._expect_params():
@@ -146,6 +166,18 @@ class Method(object):
     elif self._check_params_by_name(params):
       return self._handler(**params)
     raise InvocationException('INVALID_PARAMS')
+
+  def info(self):
+    if(self._params == None):
+      params = {}
+    else:
+      params = self._params
+    return {
+      'method': self._name,
+      'description': self._description,
+      'params': params,
+      'return': '[]',
+    }
 
   def _expect_params(self):
     try:

@@ -40,7 +40,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/home/jcsombria/workspace/python/py-ripmatlab/venv"
+VIRTUAL_ENV="/home/jcsombria/workspace/python/py-rip/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

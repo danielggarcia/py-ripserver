@@ -1,4 +1,4 @@
-#!/home/jcsombria/workspace/python/py-ripmatlab/venv/bin/python
+#!/home/jcsombria/workspace/python/py-rip/venv/bin/python
 
 import sys
 import getopt

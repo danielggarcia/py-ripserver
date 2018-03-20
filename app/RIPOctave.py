@@ -6,7 +6,6 @@ Created on 20/10/2015
 import os.path
 
 from jsonrpc.JsonRpcServer import JsonRpcServer
-
 from oct2py import octave
 
 class RIPOctave(JsonRpcServer):
@@ -14,32 +13,74 @@ class RIPOctave(JsonRpcServer):
   classdocs
   '''
 
-  def __init__(self):
+  def __init__(self, name='RIP Octave', description='An implementation of RIP for Octave'):
     '''
     Constructor
     '''
-    super().__init__()
-    self.on('connect', 0, self._connect)
-    self.on('disconnect', 0, self._disconnect)
-    self.on('get', 1, self._get)
-    self.on('set', 2, self._set)
-    self.on('eval', 1, self._eval)
+    super().__init__(name, description)
 
-  def _connect(self):
+    info = {
+      'info': {
+        'description': 'To get server info',
+        'params': None,
+        'implementation': self.info,
+      },
+      'connect': {
+        'implementation': self.connect,
+        'description': 'To start a new session',
+        'params': {},
+      },
+      'disconnect': {
+        'description': 'To finish a session',
+        'implementation': self.disconnect,
+      },
+      'get': {
+        'description': 'To read server variables',
+        'params': {
+          'variables': '[string]',
+        },
+        'implementation': self.get,
+      },
+      'set': {
+        'description': 'To write server variables',
+        'params': {
+          'variables': '[string]',
+          'values':'[]',
+        },
+        'implementation': self.set,
+      },
+      'eval': {
+        'description': 'To evaluate arbitrary octave code',
+        'params': {
+          'code': '[string]',
+        },
+        'implementation': self.eval,
+      }
+
+    }
+
+    for method in info:
+      try:
+        implementation = info[method].get('implementation')
+        self.on(method, info[method], implementation)
+      except:
+        print('[WARNING] Ignoring invalid method')
+
+  def connect(self):
     return True
 
 
-  def _disconnect(self):
+  def disconnect(self):
     pass
 
 
-  def _set(self, variables, values):
+  def set(self, variables, values):
     for i in range(0, len(variables)):
       name = variables[i]
       octave[name] = values
 
 
-  def _get(self, variables):
+  def get(self, variables):
     toReturn = {}
     for i in range(0, len(variables)):
       name = variables[i]
@@ -48,7 +89,7 @@ class RIPOctave(JsonRpcServer):
     return toReturn
 
 
-  def _eval(self, command):
+  def eval(self, command):
     try:
       result = octave.eval(command)
     except:
