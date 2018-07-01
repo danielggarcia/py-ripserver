@@ -1,4 +1,4 @@
-#!/home/jcsombria/workspace/python/py-rip/venv/bin/python3
+#!/opt/py-ripserver/venv/bin/python3.5
 
 # -*- coding: utf-8 -*-
 import re

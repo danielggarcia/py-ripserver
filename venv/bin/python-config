@@ -1,4 +1,4 @@
-#!/home/jcsombria/workspace/python/py-rip/venv/bin/python
+#!/opt/py-ripserver/venv/bin/python
 
 import sys
 import getopt
