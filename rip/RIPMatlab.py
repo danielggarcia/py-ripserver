@@ -50,8 +50,6 @@ class RIPMatlab(JsonRpcServer):
     return self.matlab.get(variables)
 
 
-
-
   def _eval(self, command):
     try:
       result = self._matlab.eval(command, nargout=0)
