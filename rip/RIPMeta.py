@@ -1,8 +1,10 @@
 import ujson
 
 class RIPSerializable(object):
-  name = 'Object'
-  data = {}
+
+  def __init__(self):
+    self.name = 'Object'
+    self.data = {}
 
   def set(self, key, value):
     self.data[key] = value
@@ -16,6 +18,7 @@ class RIPSerializable(object):
 class RIPMetadata(RIPSerializable):
 
   def __init__(self, info, readables, writables):
+    super().__init__()
     self.data = {
       'info': info.data,
       'readables': readables.data,
@@ -25,6 +28,7 @@ class RIPMetadata(RIPSerializable):
 class RIPServerInfo(RIPSerializable):
 
   def __init__(self, name, description, authors='', keywords=''):
+    super().__init__()
     self.name = 'info'
     self.data = {
       'name': name,
@@ -36,6 +40,7 @@ class RIPServerInfo(RIPSerializable):
 class RIPMethod(RIPSerializable):
   ''' Encapsulates metadata of a RIP Method '''
   def __init__(self, url, type_, description='Dummy Method', params=[], returns='text/event-stream', example=''):
+    super().__init__()
     self.name = 'method'
     try:
       params = [x.data for x in params]
@@ -54,6 +59,7 @@ class RIPMethod(RIPSerializable):
 class RIPVariable(RIPSerializable):
 
   def __init__(self, name, description='Variable', type_='float', min_=0, max_=1, precision=0):
+    super().__init__()
     self.name = 'variable'
     self.data = {
       'name': name,
@@ -67,6 +73,7 @@ class RIPVariable(RIPSerializable):
 class RIPVariablesList(RIPSerializable):
 
   def __init__(self, list_, methods, read_notwrite=False):
+    super().__init__()
     if(read_notwrite):
       self.name = 'readables'
     else:
@@ -78,6 +85,7 @@ class RIPVariablesList(RIPSerializable):
 class RIPParam(RIPSerializable):
   
   def __init__(self, name, required, location, type_=None, subtype=None, value=None, elements=None):
+    super().__init__()
     self.data = {
       'name': name,
       'required': required,
@@ -91,6 +99,7 @@ class RIPParam(RIPSerializable):
 class RIPExperienceList(RIPSerializable):
 
   def __init__(self, list_, methods):
+    super().__init__()
     try:
       m = [x.data for x in methods]
     except:

@@ -93,7 +93,7 @@ class JsonRpcServer(object):
         return self.builder.response(result, request_id)
     except InvocationException as error:
       return self._response_with_error(error.code, request_id)
-  
+
   def _check_fields(self, request):
     # jsonrpc must be 2.0, method must always exists. 'id' and 'params' may be omitted
     try:
@@ -103,7 +103,7 @@ class JsonRpcServer(object):
       params = request.get('params')
     except:
       raise InvocationException('INVALID_REQUEST')
-    
+
     return (method, params, request_id)
 
   def _invoke(self, method, params):
@@ -138,6 +138,14 @@ class JsonRpcServer(object):
   def getMethods(self):
     methodList = [method.info() for method in self.methods.values()]
     return methodList
+
+  def addMethods(self, methods):
+    for m in methods:
+      try:
+        implementation = methods[m].get('implementation')
+        self.on(m, methods[m], implementation)
+      except:
+        print('[WARNING] Ignoring invalid method')
 
 class InvocationException(Exception):
   """Exception raised for an error occurred during the invocation of a method
@@ -184,7 +192,7 @@ class Method(object):
       return self._params != None and not self._params == 0
     except:
       return False
-    
+
 
   def _check_params_by_position(self, params):
     try:

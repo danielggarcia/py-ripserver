@@ -1,90 +1,100 @@
 '''
-Created on 20/10/2015
-
 @author: jcsombria
 '''
 import os.path
 
-from jsonrpc.JsonRpcServer import JsonRpcServer
-from app.MatlabConnector import CommandBuilder, MatlabConnector
-from app.SimulinkConnector import SimulinkConnector
+from rip.RIPGeneric import RIPGeneric
+from .MatlabConnector import CommandBuilder, MatlabConnector
+from .SimulinkConnector import SimulinkConnector
 
 import matlab.engine
 
-class RIPMatlab(JsonRpcServer):
+class RIPMatlab(RIPGeneric):
   '''
-  classdocs
+  RIP MATLAB Adapter
   '''
 
-  def __init__(self):
+  def __init__(self, name='Octave', description='An implementation of RIP to control Octave', authors='J. Chacon', keywords='Octave'):
     '''
     Constructor
     '''
-    super().__init__()
-    self.on('connect', 0, self._connect)
-    self.on('disconnect', 0, self._disconnect)
-    self.on('get', 1, self._get)
-    self.on('set', 2, self._set)
-    self.on('eval', 1, self._eval)
-    self.on('open', 1, self._open)
-    self.on('step', 1, self._step)
+    super().__init__(name, description, authors, keywords)
+
     self.commandBuilder = CommandBuilder()
     self.matlab = MatlabConnector()
     self.simulink = SimulinkConnector()
-  
-  def _connect(self):
+
+    self.addMethods({
+      'connect': { 'description': 'Start a new MATLAB session',
+        'params': {},
+        'implementation': self.connect,
+      },
+      'disconnect': { 'description': 'Finish the current MATLAB session',
+        'params': {},
+        'implementation': self.disconnect,
+      },
+      'get': { 'description': 'Read variables from the MATLAB\'s workspace',
+        'params': { 'expId': 'string', 'variables': '[string]' },
+        'implementation': self.get,
+      },
+      'set': { 'description': 'Send values to variables in the MATLAB\'s workspace',
+        'params': { 'expId': 'string', 'variables': '[string]', 'values':'[]' },
+        'implementation': self.set,
+      },
+      'eval': { 'description': 'Run MATLAB code',
+        'params': { 'expId': 'string', 'code': '[string]'},
+        'implementation': self.set,
+      },
+    })
+
+  def connect(self):
     self._matlab = matlab.engine.start_matlab('-desktop')
     self.simulink.set
     return True
 
-
-  def _disconnect(self):
+  def disconnect(self):
     self._matlab.quit()
 
-
-  def _set(self, variables, values):
+  def set(self, variables, values):
     self.matlab.set(variables, values)
 
-
-  def _get(self, variables):
+  def get(self, variables):
     return self.matlab.get(variables)
 
-
-  def _eval(self, command):
+  def eval(self, command):
     try:
       result = self._matlab.eval(command, nargout=0)
     except:
       pass
     return result
 
-
-  def _open(self, path):
-    try:
-      #open
-      dirname = os.path.dirname(path)
-      cd = self.commandBuilder.cd(dirname)
-      model = os.path.basename(path)
-      load_system = self.commandBuilder.load_system(model)
-      command = cd + load_system
-      result = self._matlab.eval(command, nargout=0)
-      #addEjsSubsystem
-      _load_model(model)
-      
-    except:
-      return None
-    return result
-
-  def _load_model(self, model):
-    command = self.commandBuilder.addEjsSubblock(model) + \
-      self.commandBuilder.addPauseBlock(model) + \
-      self.commandBuilder.set_param(model, "StartTime", "0") + \
-      self.commandBuilder.set_param(model, "StopTime", "inf")
-    self._matlab.eval(command)
-    
-    
-  def _step(self, command):
-    try:
-      result = self._matlab.eval(command, nargout=0)
-    except:
-      return None
-    return result
+  # def _open(self, path):
+  #   try:
+  #     #open
+  #     dirname = os.path.dirname(path)
+  #     cd = self.commandBuilder.cd(dirname)
+  #     model = os.path.basename(path)
+  #     load_system = self.commandBuilder.load_system(model)
+  #     command = cd + load_system
+  #     result = self._matlab.eval(command, nargout=0)
+  #     #addEjsSubsystem
+  #     _load_model(model)
+  #
+  #   except:
+  #     return None
+  #   return result
+  #
+  # def _load_model(self, model):
+  #   command = self.commandBuilder.addEjsSubblock(model) + \
+  #     self.commandBuilder.addPauseBlock(model) + \
+  #     self.commandBuilder.set_param(model, "StartTime", "0") + \
+  #     self.commandBuilder.set_param(model, "StopTime", "inf")
+  #   self._matlab.eval(command)
+  #
+  #
+  # def _step(self, command):
+  #   try:
+  #     result = self._matlab.eval(command, nargout=0)
+  #   except:
+  #     return None
+  #   return result
