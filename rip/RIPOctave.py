@@ -4,6 +4,7 @@
 from oct2py import octave
 from rip.RIPGeneric import RIPGeneric
 from random import random
+import numpy as np
 
 class RIPOctave(RIPGeneric):
   '''
@@ -15,6 +16,17 @@ class RIPOctave(RIPGeneric):
     '''
     super().__init__(name, description, authors, keywords)
     self.octavePath = '/home/pi/workspace/robot/octave'
+    octave.eval('global TS;')
+    octave.eval('global DT;')
+    octave.eval('global CD;')
+    octave.eval('global CI;')
+    octave.eval('global MP;')
+    octave.eval('global MS;')
+    octave.eval('global IrF;')
+    octave.eval('global IrR;')
+    octave.eval('global IrL;')
+    octave.eval('global TSM;')
+    octave.eval('global message;')
     try:
       octave.addpath(self.octavePath)
       octave.robotSetup()
@@ -183,18 +195,26 @@ class RIPOctave(RIPGeneric):
     Retrieve one or more variables from the workspace of the current Octave session
     '''
     toReturn = {}
+    f = open('/var/log/robot/ejss.log','a')
+    f.write("[GET]: Expid(" + expid + ") ENTERING)\n")
     n = len(variables)
     for i in range(n):
       name = variables[i]
       try:
         toReturn[name] = octave.pull(name)
+        f.write('[GET]: Expid(' + expid + ") Variables(" + str(variables) + ") toReturn(" + str(toReturn) + ")\n")
+        f.close
       except:
         pass
     return toReturn
 
   def getValuesToNotify(self):
-    return [
+    returnValue = [
       ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL','TSM', 'message'],
       [self.sampler.lastTime(), octave.pull("TS"),octave.pull("DT"),octave.pull("CD"),octave.pull("CI"),
       octave.pull("MP"),octave.pull("MS"),octave.pull("IrF"),octave.pull("IrR"),octave.pull("IrL"),octave.pull("TSM"),octave.pull("message")]
     ]
+    f = open('/var/log/robot/ejss.log','a')
+    f.write("[getValuesToNotify]: Variables(" + str(returnValue) + ")\n")
+    f.close
+    return returnValue
