@@ -3,6 +3,7 @@
 '''
 from oct2py import octave
 from rip.RIPGeneric import RIPGeneric
+from random import random
 
 class RIPOctave(RIPGeneric):
   '''
@@ -14,8 +15,11 @@ class RIPOctave(RIPGeneric):
     '''
     super().__init__(name, description, authors, keywords)
     self.octavePath = '/home/pi/workspace/robot/octave'
-    octave.addpath(self.octavePath)
-    #octave.robotSetup()
+    try:
+      octave.addpath(self.octavePath)
+      octave.robotSetup()
+    except:
+      pass
 
     self.readables.append({
         'name':'TS',
@@ -155,9 +159,22 @@ class RIPOctave(RIPGeneric):
     Writes one or more variables to the workspace of the current Octave session
     '''
     n = len(variables)
+    #f = open('/var/log/robot/ejss.log','a')
+    #f.write('[SET]: Expid(' + expid + ") Variables(" + str(variables) + ") Values(" + str(values) + ")")
+    #f.close
     for i in range(n):
       try:
-        octave.push(variables[i], values[i])
+        #octave.push(variables[i], values[i])
+        if variables[i] == "moveForward" and values[i] == 1:
+          octave.moveForward()
+        elif variables[i] == "moveBackward" and values[i] == 1:
+          octave.moveBackward()
+        elif variables[i] == "turnLeft" and values[i] == 1:
+          octave.turnLeft()
+        elif variables[i] == "turnRight" and values[i] == 1:
+          octave.turnRight()
+        elif variables[i] == "octaveCode":
+          octave.saveRobotCode(values[i])
       except:
         pass
 
@@ -178,5 +195,6 @@ class RIPOctave(RIPGeneric):
   def getValuesToNotify(self):
     return [
       ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL','TSM', 'message'],
-      [self.sampler.lastTime(), 13256236464576,4,252,36433,1,1,45,47,77,132536474576,'This is a test']
+      [self.sampler.lastTime(), octave.pull("TS"),octave.pull("DT"),octave.pull("CD"),octave.pull("CI"),
+      octave.pull("MP"),octave.pull("MS"),octave.pull("IrF"),octave.pull("IrR"),octave.pull("IrL"),octave.pull("TSM"),octave.pull("message")]
     ]
