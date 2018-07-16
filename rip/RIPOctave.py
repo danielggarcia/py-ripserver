@@ -16,17 +16,34 @@ class RIPOctave(RIPGeneric):
     '''
     super().__init__(name, description, authors, keywords)
     self.octavePath = '/home/pi/workspace/robot/octave'
-    octave.eval('global TS;')
-    octave.eval('global DT;')
-    octave.eval('global CD;')
-    octave.eval('global CI;')
-    octave.eval('global MP;')
-    octave.eval('global MS;')
-    octave.eval('global IrF;')
-    octave.eval('global IrR;')
-    octave.eval('global IrL;')
-    octave.eval('global TSM;')
-    octave.eval('global message;')
+    self.dataArray = []
+    self.messageArray = {}
+    self.TS = 0
+    self.DT = 0
+    self.CD = 0
+    self.CI = 0
+    self.MP = 0
+    self.MS = 0
+    self.IrF = 0
+    self.IrR = 0
+    self.IrL = 0
+    self.Mensaje = ""
+
+    octave.eval('global dataArray = [];')
+    octave.eval('global messageArray = {};')
+    octave.eval('global TS = 0;')
+    octave.eval('global DT = 0;')
+    octave.eval('global CD = 0;')
+    octave.eval('global CI = 0;')
+    octave.eval('global MP = 0;')
+    octave.eval('global MS = 0;')
+    octave.eval('global IrF = 0;')
+    octave.eval('global IrR = 0;')
+    octave.eval('global IrL = 0;')
+    octave.eval('global Mensaje = "";')
+    octave.eval('global currentAction = "";')
+    octave.eval('global octaveCode = "";')
+
     try:
       octave.addpath(self.octavePath)
       octave.robotSetup()
@@ -106,15 +123,7 @@ class RIPOctave(RIPGeneric):
         'precision':'0'
       })
     self.readables.append({
-        'name':'TSM',
-        'description':'Timestamp of the last sent message',
-        'type':'long',
-        'min':'0',
-        'max':'Inf',
-        'precision':'0'
-      })
-    self.readables.append({
-        'name':'message',
+        'name':'Mensaje',
         'description':'Last readed message',
         'type':'str',
         'min':'0',
@@ -122,35 +131,11 @@ class RIPOctave(RIPGeneric):
         'precision':'0'
       })
     self.writables.append({
-        'name':'moveForward',
-        'description':'Moves the robot forward, sending the signal to both engines',
-        'type':'int',
+        'name':'currentAction',
+        'description':'Sets an action to perform in the robot: D(-255,255), I(-255,255),P,K,F,B,L,R,S,U',
+        'type':'str',
         'min':'0',
-        'max':'1',
-        'precision':'0'
-    })
-    self.writables.append({
-        'name':'moveBackward',
-        'description':'Moves the robot backwards, sending the signal to both engines',
-        'type':'int',
-        'min':'0',
-        'max':'1',
-        'precision':'0'
-    })
-    self.writables.append({
-        'name':'turnLeft',
-        'description':'Makes the robot to turn left, sending the signal to both engines',
-        'type':'int',
-        'min':'0',
-        'max':'1',
-        'precision':'0'
-    })
-    self.writables.append({
-        'name':'turnRight',
-        'description':'Makes the robot to turn right, sending the signal to both engines',
-        'type':'int',
-        'min':'0',
-        'max':'1',
+        'max':'Inf',
         'precision':'0'
     })
     self.writables.append({
@@ -163,7 +148,6 @@ class RIPOctave(RIPGeneric):
     })
 
   def __del__(self):
-    octave.addPath(self.octavePath)
     octave.endSession()
 
   def set(self, expid, variables, values):
@@ -176,17 +160,8 @@ class RIPOctave(RIPGeneric):
     #f.close
     for i in range(n):
       try:
-        #octave.push(variables[i], values[i])
-        if variables[i] == "moveForward" and values[i] == 1:
-          octave.moveForward()
-        elif variables[i] == "moveBackward" and values[i] == 1:
-          octave.moveBackward()
-        elif variables[i] == "turnLeft" and values[i] == 1:
-          octave.turnLeft()
-        elif variables[i] == "turnRight" and values[i] == 1:
-          octave.turnRight()
-        elif variables[i] == "octaveCode":
-          octave.saveRobotCode(values[i])
+        octave.push(variables[i], values[i])
+        octave.arduinoProcessInputs()
       except:
         pass
 
@@ -209,10 +184,10 @@ class RIPOctave(RIPGeneric):
     return toReturn
 
   def getValuesToNotify(self):
+    lastData = octave.getLastData()
     returnValue = [
-      ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL','TSM', 'message'],
-      [self.sampler.lastTime(), octave.pull("TS"),octave.pull("DT"),octave.pull("CD"),octave.pull("CI"),
-      octave.pull("MP"),octave.pull("MS"),octave.pull("IrF"),octave.pull("IrR"),octave.pull("IrL"),octave.pull("TSM"),octave.pull("message")]
+      ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL','Mensaje'],
+      [self.sampler.lastTime(), lastData[0], lastData[1], lastData[2], lastData[3], lastData[4], lastData[5], lastData[6], lastData[7], lastData[8], 'Mensaje']
     ]
     f = open('/var/log/robot/ejss.log','a')
     f.write("[getValuesToNotify]: Variables(" + str(returnValue) + ")\n")
