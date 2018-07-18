@@ -24,6 +24,7 @@ class RIPGeneric(JsonRpcServer):
     self.keywords = keywords
     self.ssePeriod = 0.5
     self.sseRunning = False
+    self._running = False
     self.readables = [{
         'name':'time',
         'description':'Server time in seconds',
@@ -44,6 +45,23 @@ class RIPGeneric(JsonRpcServer):
         'implementation': self.set,
       },
     })
+
+  def start(self)
+    '''
+    Initializes the server. Any code meant to be run at init should be here.
+    '''
+    if not self.sseRunning:
+      self.sseRunning = True
+      self.sampler = Sampler(self.ssePeriod)
+    self._running = True
+
+  @property
+  def running(self)
+    return self._running
+
+  @running.setter
+  def running(self)
+    pass
 
   def info(self, address='127.0.0.1:8080'):
     '''

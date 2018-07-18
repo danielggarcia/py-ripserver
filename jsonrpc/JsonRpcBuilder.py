@@ -1,5 +1,5 @@
 # JSON-RPC Builder
-# author: Jesús Chacón <jcsombria@gmail.com>
+# author: Jesus Chacon <jcsombria@gmail.com>
 #
 # Copyright (C) 2013 Jesús Chacón
 #
@@ -59,14 +59,14 @@ class JsonRpcBuilder(object):
     '''
     if(data != None):
       return {
-        'code': code, 
-        'message': message, 
+        'code': code,
+        'message': message,
         'data': data
       }
     else:
       return {
-        'code': code, 
-        'message': message, 
+        'code': code,
+        'message': message,
       }
 
   def parseResponse(self, message):
@@ -76,6 +76,3 @@ class JsonRpcBuilder(object):
     except ValueError:
       print(error);
     return response.get('result') if response != None else None
-    
-#def _add_if_defined():
-  

@@ -19,6 +19,8 @@ class HttpServer(object):
     self.host = host
     self.port = port
     self.experiences = [{ 'id': control.name }]
+    self.firstTime = False
+    self.connectedClients = 0
 
   @cherrypy.expose
   def index(self, expId=None):
@@ -45,6 +47,9 @@ class HttpServer(object):
     cherrypy.response.headers['Content-Type'] = 'text/event-stream'
     cherrypy.response.headers['Cache-Control'] = 'no-cache'
     cherrypy.response.headers['Connection'] = 'keep-alive'
+    # TO DO: stop when all clients are disconnected
+    if not self.control.running:
+        self.control.start()
     return self.control.nextSample()
   SSE._cp_config = {'response.stream': True}
 
@@ -79,7 +84,7 @@ class HttpServer(object):
       example='http://%s/RIP?expId=%s' % (self.getAddr(), self.control.name)
     )
 
-  def start(self):
+  def start(self, enable_ssl=False):
     base_dir = os.path.dirname(os.path.realpath(__file__))
     log_dir = os.path.join(base_dir, 'log')
     access_log_file = os.path.join(log_dir, 'access.log')
@@ -100,6 +105,10 @@ class HttpServer(object):
         'tools.encode.encoding': 'utf-8',
       },
     }
+    if enable_ssl:
+        cherrypy.server.ssl_module = 'builtin'
+        cherrypy.server.ssl_certificate = '%s/%s' % (base_dir, 'cert.pem')
+        cherrypy.server.ssl_private_key = '%s/%s' % (base_dir, 'privkey.pem')
     cherrypy.quickstart(self, '/RIP', config)
 
 # --------------------------------------------------------------------------------------------------
