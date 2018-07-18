@@ -46,9 +46,9 @@ class RIPGeneric(JsonRpcServer):
       },
     })
 
-  def start(self)
+  def start(self):
     '''
-    Initializes the server. Any code meant to be run at init should be here.
+    Iniatilizes the server. Any code meant to be run at init should be here.
     '''
     if not self.sseRunning:
       self.sseRunning = True
@@ -56,11 +56,11 @@ class RIPGeneric(JsonRpcServer):
     self._running = True
 
   @property
-  def running(self)
+  def running(self):
     return self._running
 
   @running.setter
-  def running(self)
+  def running(self):
     pass
 
   def info(self, address='127.0.0.1:8080'):

@@ -1,7 +1,7 @@
 # JSON-RPC Builder
 # author: Jesus Chacon <jcsombria@gmail.com>
 #
-# Copyright (C) 2013 Jesús Chacón
+# Copyright (C) 2013 Jesus Chacon
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

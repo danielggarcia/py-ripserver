@@ -1,5 +1,5 @@
 # JSON-RPC Server
-# author: Jesus Chacin <jcsombria@gmail.com>
+# author: Jesus Chacon <jcsombria@gmail.com>
 #
 # Copyright (C) 2013 Jesus Chacon
 #

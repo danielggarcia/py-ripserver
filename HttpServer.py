@@ -106,9 +106,9 @@ class HttpServer(object):
       },
     }
     if enable_ssl:
-        cherrypy.server.ssl_module = 'builtin'
-        cherrypy.server.ssl_certificate = '%s/%s' % (base_dir, 'cert.pem')
-        cherrypy.server.ssl_private_key = '%s/%s' % (base_dir, 'privkey.pem')
+      cherrypy.server.ssl_module = 'builtin'
+      cherrypy.server.ssl_certificate = '%s/%s' % (base_dir, 'cert.pem')
+      cherrypy.server.ssl_private_key = '%s/%s' % (base_dir, 'privkey.pem')
     cherrypy.quickstart(self, '/RIP', config)
 
 # --------------------------------------------------------------------------------------------------
