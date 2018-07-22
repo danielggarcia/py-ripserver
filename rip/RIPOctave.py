@@ -5,6 +5,7 @@ from oct2py import octave
 from rip.RIPGeneric import RIPGeneric
 from random import random
 import numpy as np
+import string
 
 class RIPOctave(RIPGeneric):
   '''
@@ -169,40 +170,43 @@ class RIPOctave(RIPGeneric):
     Writes one or more variables to the workspace of the current Octave session
     '''
     n = len(variables)
-    f = open('/var/log/robot/ejss.log','a')
-    f.write('[SET]: Expid(' + expid + ") Variables(" + str(variables) + ") Values(" + str(values) + ")")
+    #f = open('/var/log/robot/ejss.log','a')
+    #f.write('[SET]: Expid(' + expid + ") Variables(" + str(variables) + ") Values(" + str(values) + "); len(variables): " + str(len(variables)) + "; len(values): " + str(len(values)) + "\n")
     
     for i in range(n):
       try:
-        f.write('[SET]: Variable: ' + str(variables[i] + "; value: " + str(values[i])))
         if(variables[i] == 'currentAction'):
+          #f.write('[SET]: currentAction Variable: ' + str(variables[i] + "; value: " + str(values[i])) + "\n")
           octave.arduinoProcessInputs(values[i])
         elif(variables[i] == 'octaveCode'):
-          octave.executeOctaveCode(values[i])
+          #f.write('[SET]: octaveCode Variable: ' + str(variables[i] + "; value: " + repr(str(values))) + "\n")
+          code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
+          code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v')
+          octave.executeOctaveCode(code)
       except Exception as e:
-        f.write("Error al realizar el SET: " + str(e))
+        #f.write("\nError al realizar el SET: " + str(e) + "\n")
         pass
-    f.close
+    #f.close
   def get(self, expid, variables):
     '''
     Retrieve one or more variables from the workspace of the current Octave session
     '''
     toReturn = {}
-    f = open('/var/log/robot/ejss.log','a')
-    f.write("[GET]: Expid(" + expid + ") ENTERING)\n")
+    #f = open('/var/log/robot/ejss.log','a')
+    #f.write("[GET]: Expid(" + expid + ") ENTERING)\n")
     n = len(variables)
     for i in range(n):
       name = variables[i]
       try:
         toReturn[name] = octave.pull(name)
-        f.write('[GET]: Expid(' + expid + ") Variables(" + str(variables) + ") toReturn(" + str(toReturn) + ")\n")
-        f.close()
+        #f.write('[GET]: Expid(' + expid + ") Variables(" + str(variables) + ") toReturn(" + str(toReturn) + ")\n")
+        #f.close()
       except:
         pass
     return toReturn
 
   def getValuesToNotify(self):
-    f = open('/var/log/robot/ejss.log','a')
+    #f = open('/var/log/robot/ejss.log','a')
     returnValue = self.previousMessage
     try:
       self.TS = 0
@@ -215,7 +219,7 @@ class RIPOctave(RIPGeneric):
       self.IrR = 0
       self.IrL = 0
       result = octave.updateGlobals()
-      f.write("Result: " + str(type(result)) + ", " + str(result) + "\n")
+      #f.write("Result: " + str(type(result)) + ", " + str(result) + "\n")
       if type(result) is list:
         pass
       elif type(result) is np.ndarray and result.size == 9:
@@ -243,7 +247,7 @@ class RIPOctave(RIPGeneric):
           self.TSM = int(msg.item(0))
           self.Mensaje = msg.item(1)
       except Exception as e:
-        f.write("Error retrieving messages from server: " + str(e))
+        #f.write("Error retrieving messages from server: " + str(e))
         self.TSM = 0
         self.Mensaje = ""
         pass
@@ -252,8 +256,8 @@ class RIPOctave(RIPGeneric):
         [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje]
       ]
       self.previousMessage = returnValue
-      f.close()
+      #f.close()
     except Exception as e:
       returnValue = [['id', 'Mensaje'], [-1, str(e)]]
-      f.close()
+      #f.close()
     return returnValue
