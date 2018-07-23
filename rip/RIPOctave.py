@@ -5,7 +5,18 @@ from oct2py import octave
 from rip.RIPGeneric import RIPGeneric
 from random import random
 import numpy as np
+from PIL import Image
 import string
+from io import BytesIO
+import base64
+import logging
+#import pdb
+import matplotlib as mpl
+import matplotlib.image as mpimg
+import traceback
+
+LOG_FILENAME = '/var/log/robot/RIPOctave.log'
+logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG)
 
 class RIPOctave(RIPGeneric):
   '''
@@ -28,8 +39,12 @@ class RIPOctave(RIPGeneric):
     self.IrF = 0.0
     self.IrR = 0.0
     self.IrL = 0.0
+    self.TSM = 0.0
+    self.Mensaje = ""
     self.previousMessage = []
-    
+    self.KinectImageBase64 = ""
+    self.Ready = 0
+
     octave.eval('global dataArray;')
     octave.eval('global messageArray;')
     octave.eval('global TS;')
@@ -41,14 +56,16 @@ class RIPOctave(RIPGeneric):
     octave.eval('global IrF;')
     octave.eval('global IrR;')
     octave.eval('global IrL;')
-
-    #octave.eval('global currentAction;')
+    octave.eval('global Ready;')
     octave.eval('global octaveCode;')
     octave.eval('global debugLevel;')
     
+    octave.push("Ready", 0)
+
     try:
       self.initSession()
-    except:
+    except Exception as e:
+      logging.error("initSession(): " + str(e))
       pass
 
     self.readables.append({
@@ -139,6 +156,22 @@ class RIPOctave(RIPGeneric):
         'max':'Inf',
         'precision':'0'
       })
+    self.readables.append({
+        'name':'KinectImageBase64',
+        'description':'Image retrieved from Kinect in Base64 format',
+        'type':'str',
+        'min':'0',
+        'max':'Inf',
+        'precision':'0'
+      })
+    self.readables.append({
+        'name':'Ready',
+        'description':'Checks wether or not the robot is ready to operate',
+        'type':'int',
+        'min':'0',
+        'max':'1',
+        'precision':'0'
+      })
     self.writables.append({
         'name':'currentAction',
         'description':'Sets an action to perform in the robot: D(-255,255), I(-255,255),P,K,F,B,L,R,S,U',
@@ -161,53 +194,65 @@ class RIPOctave(RIPGeneric):
 
   # This method will be invoked from HttpServer.SSE
   def start(self):
-    octave.addpath(self.octavePath)
-    octave.robotSetup()
-    octave.arduinoProcessInputs("K")
+    try:
+      octave.addpath(self.octavePath)
+      octave.robotSetup()
+      octave.arduinoProcessInputs("K")
+    except Exception as e:
+      logging.error("start(): " + str(e))
+      pass
 
   def set(self, expid, variables, values):
     '''
     Writes one or more variables to the workspace of the current Octave session
     '''
+    #pdb.set_trace()
+    #logging.debug("set(expid, variables, values): BEGIN " + str(variables))
     n = len(variables)
-    #f = open('/var/log/robot/ejss.log','a')
-    #f.write('[SET]: Expid(' + expid + ") Variables(" + str(variables) + ") Values(" + str(values) + "); len(variables): " + str(len(variables)) + "; len(values): " + str(len(values)) + "\n")
-    
+    #logging.debug("set(expid, variables, values) : (" + str(expid) + "(" + str(len(expid)) + "), " +  str(variables) + "(" + str(len(variables)) + "), " +  str(values) + "(" + str(len(values)) + ")")
     for i in range(n):
       try:
+        logging.debug("set(): variable(" + str(i) + ") = " + str(variables[i]))
         if(variables[i] == 'currentAction'):
-          #f.write('[SET]: currentAction Variable: ' + str(variables[i] + "; value: " + str(values[i])) + "\n")
+          logging.debug("set(): octave.arduinoProcessInputs(" + str(values[i] + "): INIT"))
           octave.arduinoProcessInputs(values[i])
+          logging.debug("set(): octave.arduinoProcessInputs(" + str(values[i] + "): END"))
         elif(variables[i] == 'octaveCode'):
-          #f.write('[SET]: octaveCode Variable: ' + str(variables[i] + "; value: " + repr(str(values))) + "\n")
           code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
           code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v')
+          logging.debug("set(): octave.executeOctaveCode(): BEGIN: " + code)
           octave.executeOctaveCode(code)
+          logging.debug("set(): octave.executeOctaveCode(): END:")
       except Exception as e:
-        #f.write("\nError al realizar el SET: " + str(e) + "\n")
-        pass
-    #f.close
+        logging.error("set() Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
+        
   def get(self, expid, variables):
     '''
     Retrieve one or more variables from the workspace of the current Octave session
     '''
     toReturn = {}
-    #f = open('/var/log/robot/ejss.log','a')
-    #f.write("[GET]: Expid(" + expid + ") ENTERING)\n")
+    logging.debug("get(expid, variables) : (" + str(expid) + "(" + str(len(expid)) + "), " +  str(variables) + "(" + str(len(variables)) + ")")
     n = len(variables)
     for i in range(n):
       name = variables[i]
       try:
+        logging.debug("get(): octave.pull(" + str(name) + ")")
         toReturn[name] = octave.pull(name)
-        #f.write('[GET]: Expid(' + expid + ") Variables(" + str(variables) + ") toReturn(" + str(toReturn) + ")\n")
-        #f.close()
-      except:
+        logging.debug("get(): " + str(name) + " = " + str(toReturn[name]))
+      except Exception as e:
+        logging.error("get(): Error: " + str(e))
         pass
     return toReturn
 
   def getValuesToNotify(self):
-    #f = open('/var/log/robot/ejss.log','a')
+    #pdb.set_trace()
     returnValue = self.previousMessage
+    #logging.debug("getValuesToNotify(): PreviousValue = " + str(returnValue))
+    try:
+      logging.debug("getValuesToNotify(): octave.getDepthImage8()")
+      octave.getDepthImage8()
+    except:
+      pass
     try:
       self.TS = 0
       self.DT = 0
@@ -218,46 +263,97 @@ class RIPOctave(RIPGeneric):
       self.IrF = 0
       self.IrR = 0
       self.IrL = 0
+      logging.debug("getValuesToNotify(): octave.updateGlobals: BEGIN")
       result = octave.updateGlobals()
-      #f.write("Result: " + str(type(result)) + ", " + str(result) + "\n")
+      logging.debug("getValuesToNotify(): octave.updateGlobals: END: " + str(result) + "(" + str(type(result)) + ")")
+      #pdb.set_trace()
       if type(result) is list:
+        logging.debug("getValuesToNotify(): type is list")
         pass
-      elif type(result) is np.ndarray and result.size == 9:
+      elif type(result) is np.ndarray:
+        logging.debug("getValuesToNotify(): type is np.ndarray and len(result) = 9")
+        
         if type(result.item(0)) is float:
           self.TS = result.item(0)
+          logging.debug("getValuesToNotify(TS): (" + str(result.item(0)) + ", " + str(type(result.item(0))) + ")")
         if type(result.item(1)) is float:
           self.DT = result.item(1)
+          logging.debug("getValuesToNotify(DT): (" + str(result.item(1)) + ", " + str(type(result.item(1))) + ")")
         if type(result.item(2)) is float:
           self.CD = result.item(2)
+          logging.debug("getValuesToNotify(CD): (" + str(result.item(2)) + ", " + str(type(result.item(2))) + ")")
         if type(result.item(3)) is float:
           self.CI = result.item(3)
+          logging.debug("getValuesToNotify(CI): (" + str(result.item(3)) + ", " + str(type(result.item(3))) + ")")
         if type(result.item(4)) is float:
           self.MP = result.item(4)
+          logging.debug("getValuesToNotify(MP): (" + str(result.item(4)) + ", " + str(type(result.item(4))) + ")")
         if type(result.item(5)) is float:
           self.MS = result.item(5)
+          logging.debug("getValuesToNotify(MS): (" + str(result.item(5)) + ", " + str(type(result.item(5))) + ")")
         if type(result.item(6)) is float:
           self.IrF = result.item(6)
+          logging.debug("getValuesToNotify(IrF): (" + str(result.item(6)) + ", " + str(type(result.item(6))) + ")")
         if type(result.item(7)) is float:
           self.IrR = result.item(7)
+          logging.debug("getValuesToNotify(IrR): (" + str(result.item(7)) + ", " + str(type(result.item(7))) + ")")
         if type(result.item(8)) is float:
           self.IrL = result.item(8)
+          logging.debug("getValuesToNotify(IrL): (" + str(result.item(8)) + ", " + str(type(result.item(8))) + ")")
       try:
+        logging.debug("octave.getLastMessage(): BEGIN")
         msg = octave.getLastMessage()
+        logging.debug("octave.getLastMessage(): END: (" + str(msg) + ", " + str(type(msg)) + ")")
         if msg.size == 2:
           self.TSM = int(msg.item(0))
           self.Mensaje = msg.item(1)
+          logging.debug("getValuesToNotify(TSM): (" + str(self.TSM) + ", " + str(type(self.TSM)) + ")")
+          logging.debug("getValuesToNotify(Mensaje): (" + str(self.Mensaje) + ", " + str(type(self.Mensaje)) + ")")
       except Exception as e:
-        #f.write("Error retrieving messages from server: " + str(e))
+        logging.error("getValuesToNotify(getLastMessage): ERROR : " + str(e))
         self.TSM = 0
         self.Mensaje = ""
         pass
+
+      try:
+        logging.debug("getValuesToNotify(imageArray): BEGIN")
+        imageArray = octave.getKinectImageAsArray()
+        logging.debug("getValuesToNotify(imageArray): octave.getKinectImageAsArray(): (" + str(len(imageArray)) + ", " + str(type(imageArray)) + ")")
+        if len(imageArray) > 1:
+          logging.debug("getValuesToNotify(imageArray): Image.fromArray: BEGIN")
+          cmx = mpl.cm.get_cmap('prism')
+          im = Image.fromarray(np.uint8(cmx(imageArray)*255))
+          #im = Image.fromarray(np.uint8(imageArray))
+          logging.debug("getValuesToNotify(imageArray): Image.fromArray: END")
+          bufferedImage = BytesIO()
+          logging.debug("getValuesToNotify(imageArray): Image.save: BEGIN")
+          im.save(bufferedImage, format="PNG")
+          logging.debug("getValuesToNotify(imageArray): Image.save: END")
+          logging.debug("getValuesToNotify(imageArray): Image.toBase64: BEGIN")
+          imstr = str(base64.b64encode(bufferedImage.getvalue())).split('\'')
+          logging.debug("getValuesToNotify(imageArray): Image.toBase64: END: " + str(len(imstr)))
+          if len(imstr) > 1:
+            self.KinectImageBase64 = imstr[1]
+            logging.debug("getValuesToNotify(imageArray): Received image: " + str(len(self.KinectImageBase64)))
+          else:
+            self.KinectImageBase64 = ''
+            logging.warning("getValuesToNotify(imageArray): No image received")
+      except Exception as e:
+        self.KinectImageBase64= ''
+        logging.error("getValuesToNotify(imageArray): Error recovering image: " + str(e))
+
+      try:
+        self.Ready = octave.pull('Ready')
+      except Exception as e:
+        self.Ready = 0
+        logging.error("getValuesToNotify(Ready): ERROR: " + str(e))
+
       returnValue = [
-        ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL', 'TSM', 'Mensaje'],
-        [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje]
+        ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL', 'TSM', 'Mensaje', 'KinectImageBase64', 'Ready'],
+        [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready]
       ]
       self.previousMessage = returnValue
-      #f.close()
     except Exception as e:
       returnValue = [['id', 'Mensaje'], [-1, str(e)]]
-      #f.close()
+      logging.error("getValuesToNotify(general): Error executing method: " + str(e))
     return returnValue
