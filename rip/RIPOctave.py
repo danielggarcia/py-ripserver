@@ -61,6 +61,7 @@ class RIPOctave(RIPGeneric):
     octave.eval('global debugLevel;')
     
     octave.push("Ready", 0)
+    octave.push("debugLevel", 5)
 
     try:
       self.initSession()
