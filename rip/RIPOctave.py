@@ -2,6 +2,7 @@
 @author: jcsombria
 '''
 from oct2py import Oct2Py
+import oct2py.io as oio
 from rip.RIPGeneric import RIPGeneric
 from random import random
 import numpy as np
@@ -73,11 +74,18 @@ class RIPOctave(RIPGeneric):
     octave.eval('global debugLevel;')
     
     octave.push("Ready", 0)
+    octave.push("debugLevel", 5)
 
+    octave.addpath(self.octavePath)
+    octave.addpath(self.octavePath + '/kinect')
+    octave.addpath(self.octavePath + '/arduino')
+    octave.addpath(self.octavePath + '/user')
+      
     try:
-      self.initSession()
+      #self.start()
+      logger.info("init()")
     except Exception as e:
-      logger.error("initSession(): " + str(e))
+      logger.error("init(): " + str(e))
       pass
 
     self.readables.append({
@@ -187,7 +195,7 @@ class RIPOctave(RIPGeneric):
     self.readables.append({
         'name':'octaveLog',
         'description':'String with log information',
-        'type':'int',
+        'type':'str',
         'min':'-Inf',
         'max':'Inf',
         'precision':'0'
@@ -215,7 +223,7 @@ class RIPOctave(RIPGeneric):
   # This method will be invoked from HttpServer.SSE
   def start(self):
     try:
-      octave.addpath(self.octavePath)
+      logger.info("start()")
       octave.robotSetup()
       octave.arduinoProcessInputs("K")
     except Exception as e:
@@ -244,8 +252,13 @@ class RIPOctave(RIPGeneric):
         elif(variables[i] == 'octaveCode'):
           code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
           code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v')
-          logger.debug("set(): octave.executeOctaveCode(): BEGIN: " + code)
-          octave.executeOctaveCode(code)
+          logger.info("set(): octave.executeOctaveCode(): BEGIN: " + code)
+          try:
+            octave.runUserCode(code)
+          except Exception as e:
+            logger.warning('Error invoking native method. Executing via octave.eval...' + str(e))
+            octave.eval("runUserCode('" + code + "');")
+            pass
           logger.debug("set(): octave.executeOctaveCode(): END:")
       except Exception as e:
         logger.error("set() Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
@@ -328,7 +341,7 @@ class RIPOctave(RIPGeneric):
         logger.debug("octave.getLastMessage(): BEGIN")
         msg = octave.getLastMessage()
         logger.debug("octave.getLastMessage(): END: (" + str(msg) + ", " + str(type(msg)) + ")")
-        if msg.size == 2:
+        if isinstance(msg, oio.Cell) and msg.size == 2:
           self.TSM = int(msg.item(0))
           self.Mensaje = msg.item(1)
           logger.debug("getValuesToNotify(TSM): (" + str(self.TSM) + ", " + str(type(self.TSM)) + ")")
@@ -342,9 +355,9 @@ class RIPOctave(RIPGeneric):
       try:
         logger.debug("getValuesToNotify(imageArray): BEGIN")
         imageArray = octave.getKinectImageAsArray()
-        logger.debug("getValuesToNotify(imageArray): octave.getKinectImageAsArray(): (" + str(len(imageArray)) + ", " + str(type(imageArray)) + ")")
-        if len(imageArray) > 1:
-          logger.debug("getValuesToNotify(imageArray): Image.fromArray: BEGIN")
+        if isinstance(imageArray, list) and len(imageArray) > 1:
+          logger.debug("getValuesToNotify(imageArray): octave.getKinectImageAsArray(): (" + str(len(imageArray)) + ", " + str(type(imageArray)) + ")")
+          logger.debug("getValuesToNotify(imageArray): Image.fromArray: BEGIN - " + str(type(imageArray)))
           cmx = mpl.cm.get_cmap('prism')
           im = Image.fromarray(np.uint8(cmx(imageArray)*255))
           logger.debug("getValuesToNotify(imageArray): Image.fromArray: END")
@@ -366,16 +379,19 @@ class RIPOctave(RIPGeneric):
         logger.error("getValuesToNotify(imageArray): Error recovering image: " + str(e))
 
       try:
-        self.Ready = octave.pull('Ready')
+        #self.Ready = octave.isKinectReady()
+        self.Ready = 1
       except Exception as e:
         self.Ready = 0
-        logger.error("getValuesToNotify(Ready): ERROR: " + str(e))
+        logger.warning("getValuesToNotify(Ready): WARNING: " + str(e))
+        pass
 
-        currentLog = self.getLog()
+      octaveLog = ""
+      octaveLog = self.getLog()
 
       returnValue = [
         ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL', 'TSM', 'Mensaje', 'KinectImageBase64', 'Ready', 'octaveLog'],
-        [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready, currentLog]
+        [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready, octaveLog]
       ]
       self.previousMessage = returnValue
     except Exception as e:
@@ -384,11 +400,15 @@ class RIPOctave(RIPGeneric):
     return returnValue
 
   def getLog(self):
-    result = log_stream.getvalue()
-    log_stream.truncate(0)
-    log_stream.seek(0)
-    if result is None or len(result) == 0:
-      result = ""
+    result = ""
+    try:
+      result = log_stream.getvalue()
+      log_stream.truncate(0)
+      log_stream.seek(0)
+      if result is None or len(result) == 0:
+        result = ""
+    except Exception as e:
+      logger.error("getLog(): " + str(e))
     return result
 
   def saveCurrentData(self):
