@@ -61,6 +61,8 @@ class HttpServer(object):
     '''
     socket = cherrypy.request.body.fp
     message = socket.read()
+    if not self.control.running:
+        self.control.start()
     response = self.control.parse(message)
     return response.encode("utf-8")
 
@@ -104,6 +106,8 @@ class HttpServer(object):
         ],
         'tools.encode.on': True,
         'tools.encode.encoding': 'utf-8',
+        # Avoid redirect when the URL does not have an ending '\'
+        'tools.trailing_slash.on': False,
       },
     }
     if enable_ssl:

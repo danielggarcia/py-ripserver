@@ -3,7 +3,7 @@ from rip.RIPOctave import RIPOctave
 
 if __name__ == '__main__':
   HttpServer(
-    host='0.0.0.0',
+    host='127.0.0.1',
     port=2055,
     control=RIPOctave(
       name='Octave',
