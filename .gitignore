@@ -1,3 +1,4 @@
 log/access.log
 __pycache__/
 octave-workspace
+rip/__pycache__/

@@ -16,21 +16,35 @@ import logging
 import matplotlib as mpl
 import matplotlib.image as mpimg
 import time
+import signal
 import traceback
+
+TIMEOUT = 60
 
 # Logger Configuration
 logger = logging.getLogger('oct2py')
 logger.setLevel(logging.INFO)
 
 log_stream = StringIO()
-formatter = logging.Formatter('%(asctime)s - %(message)s')
+formatter = logging.Formatter('[%(asctime)s] - %(message)s')
 ch = logging.StreamHandler(log_stream)
 ch.setLevel(logging.INFO)
 
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-octave = Oct2Py(None, logger, 120)
+# Timeout exception for user code execution
+class TimeoutError(Exception):
+  pass
+
+# Timeout handler for user code execution
+def timeoutHandler(signum, frame):
+  raise TimeoutError()
+
+# Register signal handling for SIGALRM
+signal.signal(signal.SIGALRM, timeoutHandler)
+
+octave = Oct2Py(None, logger, TIMEOUT)
 
 class RIPOctave(RIPGeneric):
   '''
@@ -83,7 +97,7 @@ class RIPOctave(RIPGeneric):
     octave.addpath(self.octavePath + '/user')
       
     try:
-      logger.info("init()")
+      logger.info("ENVIRONMENT SETUP...")
     except Exception as e:
       logger.error("init(): " + str(e))
       pass
@@ -216,6 +230,7 @@ class RIPOctave(RIPGeneric):
         'max':'Inf',
         'precision':'0'
     })
+    logger.info("ENVIRONMENT SETUP COMPLETED")
 
   def __del__(self):
     octave.endSession()
@@ -223,7 +238,7 @@ class RIPOctave(RIPGeneric):
   # This method will be invoked from HttpServer.SSE
   def start(self):
     try:
-      logger.info("start()")
+      logger.info("STARTING SERVER. EXECUTION TIMEOUT SET TO " + str(TIMEOUT) + " SECONDS.")
       super(RIPOctave, self).start()
       octave.robotSetup()
       octave.arduinoProcessInputs("K")
@@ -246,6 +261,7 @@ class RIPOctave(RIPGeneric):
         # currentAction
         if(variables[i] == 'currentAction'):
           logger.debug("set(): octave.arduinoProcessInputs(" + str(values[i] + "): INIT"))
+          logger.info('Sending command: ' + self.logAction(str(values[i])))
           octave.arduinoProcessInputs(values[i])
           logger.debug("set(): octave.arduinoProcessInputs(" + str(values[i] + "): END"))
 
@@ -254,8 +270,11 @@ class RIPOctave(RIPGeneric):
           code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
           code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v')
           logger.debug("set(): octave.executeOctaveCode(): BEGIN: " + code)
-          #octave.executeOctaveCode(code)
-          self.executeOctaveCode(code)
+          try:
+            self.executeOctaveCode(code)
+          except:
+            pass
+          logger.info("Code sent to robot.")
           logger.debug("set(): octave.executeOctaveCode(): END:")
       except Exception as e:
         logger.error("set() Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
@@ -385,6 +404,8 @@ class RIPOctave(RIPGeneric):
         logger.error("getValuesToNotify(Ready): WARNING: " + str(e))
         pass
 
+      self.showLogVariables()
+      
       octaveLog = ""
       octaveLog = self.getLog()
 
@@ -393,6 +414,7 @@ class RIPOctave(RIPGeneric):
         [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready, octaveLog]
       ]
       self.previousMessage = returnValue
+      self.keepAlive()
     except Exception as e:
       returnValue = [['id', 'Mensaje'], [-1, str(e)]]
       logger.error("getValuesToNotify(general): Error executing method: " + str(e))
@@ -411,15 +433,46 @@ class RIPOctave(RIPGeneric):
     return result
 
   def executeOctaveCode(self, code):
-    currentTry = 0
-    while currentTry < 10:
-      try:
-        octave.executeOctaveCode(code)
-        currentTry = 10
-      except Exception as e:
-        currentTry += 1
-        time.sleep(1)
-        if currentTry == 10:
-          logger.error("executeOctaveCode(): " + str(type(e)) + ": " + str(e))
-        else:
-          pass
+    # Set timeout for code execution
+    signal.alarm(TIMEOUT+10)
+    try:
+      octave.feval('executeOctaveCode', code, timeout=TIMEOUT)
+    except TimeoutError as exc:
+      logger.error("Timeout")
+      self.start()
+      pass
+    except Exception as e:
+      logger.error("executeOctaveCode(): " + str(e))
+      self.start()
+      pass
+    finally:
+      signal.alarm(0)
+
+  def keepAlive(self):
+    try:
+      octave.arduinoProcessInputs('K')
+    except:
+      pass
+
+  def showLogVariables(self):
+    txt = "Received values: "
+    txt += " [TS: " + "{:.0f}".format(self.TS) + ", "
+    txt += "DT: " + "{:.0f}".format(self.DT) + ", "
+    txt += "CD: " + "{:.0f}".format(self.CD) + ", "
+    txt += "CI: " + "{:.0f}".format(self.CI) + ", "
+    txt += "MP: " + "{:.0f}".format(self.MP) + ", "
+    txt += "MS: " + "{:.0f}".format(self.MS) + ", "
+    txt += "IrF: " + "{:.0f}".format(self.IrF) + ", "
+    txt += "IrR: " + "{:.0f}".format(self.IrR) + ", "
+    txt += "IrL: " + "{:.0f}".format(self.IrL) + "]"
+    logger.info(txt)
+
+  def logAction(self, action):
+    return {
+      'F' : 'MOVE FORWARD (MANUAL)',
+      'B' : 'MOVE BACKWARDS (MANUAL)',
+      'L' : 'TURN LEFT (MANUAL)',
+      'R' : 'TURN RIGHT (MANUAL)',
+      'P' : 'STOP ENGINES (MANUAL)',
+      'K' : 'KEEP ALIVE'
+    }.get(action, "NO ACTION")
