@@ -35,6 +35,10 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+fh = logging.FileHandler('/var/log/robot/RIPOctave.log')
+fh.setLevel(logging.DEBUG)
+logger.addHandler(fh)
+
 # Timeout exception for user code execution
 class TimeoutError(Exception):
   pass
@@ -43,19 +47,31 @@ class TimeoutError(Exception):
 def timeoutHandler(signum, frame):
   raise TimeoutError()
 
+# Reads and increases by one a value written in the file /tmp/py_ripserver_PID
+# The watchdog will check if the value has been increased. If not, it will reset
+# the server process
 def watchDog(signum, frame):
-  currentPid = os.getpid()
-  pidfile = '/tmp/py_ripserver_' + str(currentPid)
-  with open(pidfile, 'r') as f:
-    currentValue = int(f.read())
-  currentValue += 1
-  with open(pidfile, 'w') as f:
-    f.write(str(currentValue))
-  pass
+  try:
+    logger.debug("watchDog(): entering handler")
+    currentPid = os.getpid()
+    pidfile = '/tmp/py_ripserver_' + str(currentPid)
+    logger.debug("PID FILE: " + pidfile)
+    with open(pidfile, 'r') as f:
+      currentValue = int(f.read())
+      logger.debug("watchDog(): read value: " + str(currentValue))
+    currentValue += 1
+    with open(pidfile, 'w') as f:
+      f.write(str(currentValue))
+      logger.debug("watchDog(): write value: " + str(currentValue))
+    pass
+  except Exception as e:
+    logger.error("watchDog(): Error checking watchdog file: " + str(e))
   
 # Register signal handling for SIGALRM
 signal.signal(signal.SIGALRM, timeoutHandler)
-signal.signal(signal.SIGUSR1, watchDog)
+
+# Register signal for SIGUSR2 (watchdog)
+signal.signal(signal.SIGUSR2, watchDog)
   
 octave = Oct2Py(None, logger, TIMEOUT)
 
