@@ -35,7 +35,7 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-fh = logging.FileHandler('/var/log/robot/RIPOctave.log')
+fh = logging.FileHandler('/var/robot/log/RIPOctave.log')
 fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
@@ -102,7 +102,10 @@ class RIPOctave(RIPGeneric):
     self.KinectImageBase64 = ""
     self.Ready = 0
     self.currentIteration = 0
-    self.resultFilePath = '/home/pi/workspace/robot/octave/user/result_'
+    self.resultFilePath = ''
+    self.cachePath = '/var/robot/cache/cache_'
+    self.userId = '0000'
+    self.currentSessionTimestamp = ''
 
     octave.eval('global dataArray;')
     octave.eval('global messageArray;')
@@ -118,10 +121,12 @@ class RIPOctave(RIPGeneric):
     octave.eval('global Ready;')
     octave.eval('global octaveCode;')
     octave.eval('global debugLevel;')
+    octave.eval('global cachePath;')
+    octave.eval('global userId;')
     
     octave.push("Ready", 0)
     octave.push("debugLevel", 5)
-
+    
     octave.addpath(self.octavePath)
     octave.addpath(self.octavePath + '/kinect')
     octave.addpath(self.octavePath + '/arduino')
@@ -269,6 +274,14 @@ class RIPOctave(RIPGeneric):
         'max':'Inf',
         'precision':'0'
     })
+    self.writables.append({
+        'name':'userId',
+        'description':'Sets the user ID in order to filter which data may be accesed',
+        'type':'str',
+        'min':'0',
+        'max':'Inf',
+        'precision':'0'
+    })
     logger.info("ENVIRONMENT SETUP COMPLETED")
 
   def __del__(self):
@@ -279,7 +292,17 @@ class RIPOctave(RIPGeneric):
     try:
       logger.info("STARTING SERVER. EXECUTION TIMEOUT SET TO " + str(TIMEOUT) + " SECONDS.")
       super(RIPOctave, self).start()
-      self.resultFilePath += "{:.0f}".format(octave.generateTimeStamp()) + '.mat'
+
+      # Function 'cacheData' appends every reading from arduino and kinect in a variable within the mat file provided
+      # in global variable 'cachePath'.
+      # This function is invoked from three octave functions: updateData(), Kinect.getImageUint8() and Kinect.getImageUint16().
+      # The cached data avoids data loss in case that connection is interrupted.
+      # The octave function getLastCachedDataFilePath() will provide the last cached file, whilst saveEnvironment() will
+      # make use of that file to generate a .mat file with all the data.
+      self.currentSessionTimestamp = "{:.0f}".format(octave.generateTimeStamp())
+      self.resultFilePath = self.cachePath + self.userId + "_" + self.currentSessionTimestamp + '.mat'
+      octave.push("cachePath", self.resultFilePath)
+      octave.push("userId", self.userId)
       octave.robotSetup()
       octave.arduinoProcessInputs("K")
     except Exception as e:
@@ -308,6 +331,13 @@ class RIPOctave(RIPGeneric):
           except:
             pass
           logger.info("Code sent to robot.")
+        elif(variables[i] == 'userId'):
+          if type(values) is list and len(values) == 1:
+            logger.info('Setting user ID to: ' + str(values[i]))
+            self.userId = str(values[i])
+            self.resultFilePath = self.cachePath + self.userId + "_" + self.currentSessionTimestamp + '.mat'
+            octave.push('userId', self.userId)
+            octave.push('cachePath', self.resultFilePath)
       except Exception as e:
         logger.error("set() Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
         
@@ -349,8 +379,8 @@ class RIPOctave(RIPGeneric):
       self.getGlobalVariables(result)
       self.KinectImageBase64 = self.getDepthImageBase64()
       try:
-        self.Ready = octave.isKinectReady()
-        #self.Ready = 1
+        #self.Ready = octave.isKinectReady()
+        self.Ready = 1
       except Exception as e:
         self.Ready = 0
         logger.error("getValuesToNotify(Ready): WARNING: " + str(e))
