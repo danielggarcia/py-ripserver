@@ -22,6 +22,11 @@ import os
 import traceback
 
 TIMEOUT = 60
+OCTAVEPATH = '/home/pi/workspace/robot/octave'
+CACHEBASEPATH = '/var/robot/cache/cache_'
+RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
+LOGFILEPATH = '/var/robot/log/RIPOctave.log'
+PIDFILEPATH = '/tmp/py_ripserver_'
 
 # Logger Configuration
 logger = logging.getLogger('oct2py')
@@ -35,7 +40,7 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-fh = logging.FileHandler('/var/robot/log/RIPOctave.log')
+fh = logging.FileHandler(LOGFILEPATH)
 fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
@@ -54,7 +59,7 @@ def watchDog(signum, frame):
   try:
     logger.debug("watchDog(): entering handler")
     currentPid = os.getpid()
-    pidfile = '/tmp/py_ripserver_' + str(currentPid)
+    pidfile = PIDFILEPATH + str(currentPid)
     logger.debug("PID FILE: " + pidfile)
     with open(pidfile, 'r') as f:
       currentValue = int(f.read())
@@ -84,7 +89,6 @@ class RIPOctave(RIPGeneric):
     Constructor
     '''
     super().__init__(name, description, authors, keywords)
-    self.octavePath = '/home/pi/workspace/robot/octave'
     self.dataArray = []
     self.messageArray = {}
     self.TS = 0.0
@@ -103,7 +107,6 @@ class RIPOctave(RIPGeneric):
     self.Ready = 0
     self.currentIteration = 0
     self.resultFilePath = ''
-    self.cachePath = '/var/robot/cache/cache_'
     self.userId = '0000'
     self.currentSessionTimestamp = ''
 
@@ -127,10 +130,10 @@ class RIPOctave(RIPGeneric):
     octave.push("Ready", 0)
     octave.push("debugLevel", 5)
     
-    octave.addpath(self.octavePath)
-    octave.addpath(self.octavePath + '/kinect')
-    octave.addpath(self.octavePath + '/arduino')
-    octave.addpath(self.octavePath + '/user')
+    octave.addpath(OCTAVEPATH)
+    octave.addpath(OCTAVEPATH + '/kinect')
+    octave.addpath(OCTAVEPATH + '/arduino')
+    octave.addpath(OCTAVEPATH + '/user')
       
     try:
       logger.info("ENVIRONMENT SETUP...")
@@ -300,7 +303,9 @@ class RIPOctave(RIPGeneric):
       # The octave function getLastCachedDataFilePath() will provide the last cached file, whilst saveEnvironment() will
       # make use of that file to generate a .mat file with all the data.
       self.currentSessionTimestamp = "{:.0f}".format(octave.generateTimeStamp())
-      self.resultFilePath = self.cachePath + self.userId + "_" + self.currentSessionTimestamp + '.mat'
+      self.resultFilePath = CACHEBASEPATH + self.userId + "_" + self.currentSessionTimestamp + '.mat'
+      if os.path.exists(RESULTMATFILEPATH):
+        os.remove(RESULTMATFILEPATH)
       octave.push("cachePath", self.resultFilePath)
       octave.push("userId", self.userId)
       octave.robotSetup()
@@ -335,7 +340,7 @@ class RIPOctave(RIPGeneric):
           if type(values) is list and len(values) == 1:
             logger.info('Setting user ID to: ' + str(values[i]))
             self.userId = str(values[i])
-            self.resultFilePath = self.cachePath + self.userId + "_" + self.currentSessionTimestamp + '.mat'
+            self.resultFilePath = CACHEBASEPATH + self.userId + "_" + self.currentSessionTimestamp + '.mat'
             octave.push('userId', self.userId)
             octave.push('cachePath', self.resultFilePath)
       except Exception as e:
