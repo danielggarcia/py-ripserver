@@ -27,6 +27,7 @@ CACHEBASEPATH = '/var/robot/cache/cache_'
 RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
 LOGFILEPATH = '/var/robot/log/RIPOctave.log'
 PIDFILEPATH = '/tmp/py_ripserver_'
+PNGIMAGEPATH='/var/robot/tmp/depthimage.png'
 
 # Logger Configuration
 logger = logging.getLogger('oct2py')
@@ -518,11 +519,9 @@ class RIPOctave(RIPGeneric):
     depthImageBase64 = ''
     try:
       logger.debug("getDepthImageBase64(imageArray): BEGIN")
-      imageArray = octave.getKinectImageAsArray()
-      if isinstance(imageArray, np.ndarray) and len(imageArray) > 1:
-        cmx = mpl.cm.get_cmap('prism')
-        im = Image.fromarray(np.uint8(cmx(imageArray)*255))
-        #im = Image.fromarray(np.uint8(imageArray))
+      retrieved = octave.getDepthImage()
+      if retrieved == 1 and os.path.exists(PNGIMAGEPATH):
+        im = Image.open(PNGIMAGEPATH)
         bufferedImage = BytesIO()
         im.save(bufferedImage, format="PNG")
         imstr = str(base64.b64encode(bufferedImage.getvalue())).split('\'')
@@ -536,10 +535,6 @@ class RIPOctave(RIPGeneric):
       depthImageBase64 = ''
       logger.error("getDepthImageBase64(imageArray): Error recovering image: " + str(e))
     return depthImageBase64
-
-  def bin2base64(self, binary):
-    bufferedObject = BytesIO()
-
 
   def logAction(self, action):
     return {
