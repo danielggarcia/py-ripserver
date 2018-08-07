@@ -20,6 +20,7 @@ import time
 import signal
 import os
 import traceback
+import shutil
 
 TIMEOUT = 60
 OCTAVEPATH = '/home/pi/workspace/robot/octave'
@@ -28,6 +29,7 @@ RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
 LOGFILEPATH = '/var/robot/log/RIPOctave.log'
 PIDFILEPATH = '/tmp/py_ripserver_'
 PNGIMAGEPATH='/var/robot/tmp/depthimage.png'
+LOCKFILE='/var/robot/tmp/.lock'
 
 # Logger Configuration
 logger = logging.getLogger('oct2py')
@@ -372,21 +374,18 @@ class RIPOctave(RIPGeneric):
     returnValue = self.previousMessage
     #logger.debug("getValuesToNotify(): PreviousValue = " + str(returnValue))
     try:
-      logger.debug("getValuesToNotify(): octave.getDepthImage8(): BEGIN")
+      logger.debug("getValuesToNotify(): getDepthImageBase64(): BEGIN")
       self.currentIteration += 1
-      if self.currentIteration >= 10:
-        #octave.saveEnvironment(self.resultFilePath)
+      if self.currentIteration >= 3:
         self.currentIteration = 0
-        octave.getDepthImage8(0)
+        self.KinectImageBase64 = self.getDepthImageBase64()
     except:
       pass
     try:
       result = octave.updateGlobals()
       self.getGlobalVariables(result)
-      self.KinectImageBase64 = self.getDepthImageBase64()
       try:
-        #self.Ready = octave.isKinectReady()
-        self.Ready = 1
+        self.Ready = octave.isKinectReady()
       except Exception as e:
         self.Ready = 0
         logger.error("getValuesToNotify(Ready): WARNING: " + str(e))
@@ -402,10 +401,13 @@ class RIPOctave(RIPGeneric):
         [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready, octaveLog]
       ]
       self.previousMessage = returnValue
-      self.keepAlive()
+      #self.keepAlive()
     except Exception as e:
       returnValue = [['id', 'Mensaje'], [-1, str(e)]]
-      logger.error("getValuesToNotify(general): Error executing method: " + str(e))
+      if str(e) == 'list index out of range':
+        pass
+      else:
+        logger.error("getValuesToNotify(general): Error executing method: " + str(e))
     return returnValue
 
   def getLog(self):
@@ -520,10 +522,26 @@ class RIPOctave(RIPGeneric):
     try:
       logger.debug("getDepthImageBase64(imageArray): BEGIN")
       retrieved = octave.getDepthImage()
+
       if retrieved == 1 and os.path.exists(PNGIMAGEPATH):
-        im = Image.open(PNGIMAGEPATH)
         bufferedImage = BytesIO()
-        im.save(bufferedImage, format="PNG")
+        try:
+          for i in range(20):
+            if os.path.exists(LOCKFILE):
+                time.sleep(0.1)
+            else:
+                break
+            if i == 20:
+                os.remove(LOCKFILE)
+          im = Image.open(PNGIMAGEPATH)
+        except Exception as e:
+          logger.error("getDepthImageBase64() Image.open: Error recovering image: " + str(e))
+          raise e
+        try:  
+          im.save(bufferedImage, format="PNG")
+        except Exception as e:
+          logger.error("getDepthImageBase64() Image.save: Error recovering image: " + str(e))
+          raise e
         imstr = str(base64.b64encode(bufferedImage.getvalue())).split('\'')
         if len(imstr) > 1:
           depthImageBase64 = imstr[1]
@@ -534,6 +552,9 @@ class RIPOctave(RIPGeneric):
     except Exception as e:
       depthImageBase64 = ''
       logger.error("getDepthImageBase64(imageArray): Error recovering image: " + str(e))
+    finally:
+      if os.path.exists(LOCKFILE):
+        os.remove(LOCKFILE)
     return depthImageBase64
 
   def logAction(self, action):
