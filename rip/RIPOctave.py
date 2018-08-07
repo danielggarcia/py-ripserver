@@ -129,7 +129,7 @@ class RIPOctave(RIPGeneric):
     octave.eval('global userId;')
     
     octave.push("Ready", 0)
-    octave.push("debugLevel", 5)
+    octave.push("debugLevel", 2)
     
     octave.addpath(OCTAVEPATH)
     octave.addpath(OCTAVEPATH + '/kinect')
