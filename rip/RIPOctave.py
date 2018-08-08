@@ -298,7 +298,7 @@ class RIPOctave(RIPGeneric):
     try:
       logger.info("STARTING SERVER. EXECUTION TIMEOUT SET TO " + str(TIMEOUT) + " SECONDS.")
       super(RIPOctave, self).start()
-
+      octave.push('debugLevel', 2)
       # Function 'cacheData' appends every reading from arduino and kinect in a variable within the mat file provided
       # in global variable 'cachePath'.
       # This function is invoked from three octave functions: updateData(), Kinect.getImageUint8() and Kinect.getImageUint16().
@@ -312,6 +312,7 @@ class RIPOctave(RIPGeneric):
       octave.push("cachePath", self.resultFilePath)
       octave.push("userId", self.userId)
       octave.robotSetup()
+      time.sleep(3)
       octave.arduinoProcessInputs("K")
     except Exception as e:
       logger.error("start(): " + str(e))
@@ -401,7 +402,7 @@ class RIPOctave(RIPGeneric):
         [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready, octaveLog]
       ]
       self.previousMessage = returnValue
-      #self.keepAlive()
+      self.keepAlive()
     except Exception as e:
       returnValue = [['id', 'Mensaje'], [-1, str(e)]]
       if str(e) == 'list index out of range':
