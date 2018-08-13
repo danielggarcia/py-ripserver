@@ -30,6 +30,7 @@ LOGFILEPATH = '/var/robot/log/RIPOctave.log'
 PIDFILEPATH = '/tmp/py_ripserver_'
 PNGIMAGEPATH='/var/robot/tmp/depthimage.png'
 LOCKFILE='/var/robot/tmp/.lock'
+LASTOCTAVECODEPATH='/var/robot/cache/usercode_'
 
 # Logger Configuration
 logger = logging.getLogger('oct2py')
@@ -264,6 +265,22 @@ class RIPOctave(RIPGeneric):
         'max':'Inf',
         'precision':'0'
       })
+    self.readables.append({
+        'name':'octaveCode',
+        'description':'Gets a string with octave code to be executed in the server',
+        'type':'str',
+        'min':'0',
+        'max':'Inf',
+        'precision':'0'
+    })
+    self.readables.append({
+        'name':'lastOctaveCode',
+        'description':'Gets a string with the last octave code executed in the server',
+        'type':'str',
+        'min':'0',
+        'max':'Inf',
+        'precision':'0'
+    })
     self.writables.append({
         'name':'currentAction',
         'description':'Sets an action to perform in the robot: D(-255,255), I(-255,255),P,K,F,B,L,R,S,U',
@@ -336,8 +353,10 @@ class RIPOctave(RIPGeneric):
           code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
           code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v')
           try:
+            logger.info("Sending code to robot...")
             self.executeOctaveCode(code)
-          except:
+          except Exception as e:
+            logger.warn("Error while processing robot code: "+ str(e))
             pass
           logger.info("Code sent to robot.")
         elif(variables[i] == 'userId'):
@@ -360,14 +379,26 @@ class RIPOctave(RIPGeneric):
     for i in range(n):
       name = variables[i]
       try:
-        # TODO: Intentar obtener el contenido del fichero .mat, que tiene formato binario
-        #with open(self.resultFilePath) as f: toReturn['matFile'] = f.read()
-        logger.debug("get(): octave.pull(" + str(name) + ")")
-        toReturn[name] = octave.pull(name)
-        logger.debug("get(): " + str(name) + " = " + str(toReturn[name]))
+        logger.info("get(): INIT")
+        if(variables[i] == 'lastOctaveCode'):
+          logger.info("get(): lastOctaveCode")
+          if os.path.exists(LASTOCTAVECODEPATH + self.userId + ".m"):
+            logger.info("get(): lastOctaveCode: Exists " + LASTOCTAVECODEPATH + self.userId + ".m")
+            with open(LASTOCTAVECODEPATH + self.userId + ".m") as f:
+              toReturn['lastOctaveCode'] = f.read()
+              logger.info("get(): lastOctaveCode Returning " + toReturn['lastOctaveCode'])
+          else:
+            logger.info("get(): lastOctaveCode: Does not exist " + LASTOCTAVECODEPATH + self.userId + ".m")
+        else:
+          # TODO: Intentar obtener el contenido del fichero .mat, que tiene formato binario
+          #with open(self.resultFilePath) as f: toReturn['matFile'] = f.read()
+          logger.debug("get(): octave.pull(" + str(name) + ")")
+          toReturn[name] = octave.pull(name)
+          logger.debug("get(): " + str(name) + " = " + str(toReturn[name]))
       except Exception as e:
         logger.error("get(): Error: " + str(e))
         pass
+    logger.info("get(): returning " + repr(toReturn))
     return toReturn
 
   def getValuesToNotify(self):
