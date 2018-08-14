@@ -1,0 +1,108 @@
+#!/opt/py-ripserver/venv/bin/python3.5
+
+from __future__ import print_function
+
+import argparse
+import logging
+import sys
+import yaml
+
+from yaml_utilities import version
+
+_description = "This small utility validate a single or a list of yaml files"
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=_description,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        default=False,
+        help='Debug mode',
+        required=False,
+    )
+    parser.add_argument(
+        '-O', '--output-file',
+        help='Output file',
+        required=False,
+    )
+    parser.add_argument(
+        '-s', '--silent',
+        action='store_true',
+        default=False,
+        help='Quiet mode',
+        required=False,
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='store_true',
+        default=False,
+        help='Display version',
+        required=False,
+    )
+    parser.add_argument(
+        'yaml_files',
+        help='YAML files to parse',
+        nargs='*',
+    )
+
+    args = parser.parse_args()
+    output_file = args.output_file
+    silent_mode = args.silent
+    yaml_files = args.yaml_files
+
+    if args.debug > 0:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug('debug=%s', args.debug)
+
+    logging.debug('version=%s', version)
+    logging.debug('output_file=%s', output_file)
+    logging.debug('silent_mode=%s', silent_mode)
+    logging.debug('version=%s', version)
+    logging.debug('yaml_files=%s', yaml_files)
+
+    if args.version is True:
+        print(version)
+        return
+
+    n_yaml_files = len(yaml_files)
+    if n_yaml_files > 1:
+        logging.error('No more than one YAMl file!')
+        exit(1)
+    elif n_yaml_files == 0:
+        logging.debug('Reading from stdin')
+        input_str = sys.stdin.read()
+        try:
+            data = yaml.load(input_str)
+        except Exception:
+            logging.error('Invalid YAML on stdin')
+            exit(2)
+    else:
+        with open(yaml_files[0], 'r') as f:
+            try:
+                data = yaml.load(f)
+            except Exception:
+                logging.error('Invalid YAML in file')
+                exit(2)
+
+    kwargs = {
+        'default_flow_style': False,
+        'canonical': False,
+        'width': 50,
+        'indent': 4,
+        'default_style': '',
+    }
+
+    dump = yaml.dump(data, **kwargs)
+
+    if output_file is not None:
+        with open(output_file, 'w') as f:
+            print(dump, file=f)
+    else:
+        if not silent_mode:
+            print(dump)
+
+main()

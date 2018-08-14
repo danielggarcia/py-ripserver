@@ -1,0 +1,155 @@
+#!/opt/py-ripserver/venv/bin/python3.5
+#
+# vim:ts=4:sw=4:expandtab
+#
+######################################################################
+
+from __future__ import print_function
+# from __future__ import with_statement
+
+import argparse
+import logging
+import os
+import sys
+import yaml
+
+import yaml_utilities
+# from yaml_utilities import R13, B64, Vault
+
+from yaml_utilities import version, get_parameter_path, get_section_path
+
+_description = """This small utility extracts a yaml file from another
+"""
+
+_epilog = """
+Example(s):
+    %(script)s -h                             - To provide this help
+    %(script)s -P users config.yml            - To return the value of name var
+    %(script)s -S users -P groups config.yml  - Same with a section
+    """ % {
+        'script': os.path.basename(sys.argv[0]),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=_description,
+        epilog=_epilog,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        default=False,
+        help='Debug mode',
+        required=False,
+    )
+    parser.add_argument(
+        '-I', '--input-separator',
+        default='/',
+        help='Separator used in input parameters',
+        required=False,
+    )
+    parser.add_argument(
+        '-O', '--output-file',
+        help='Output file',
+        required=False,
+    )
+    parser.add_argument(
+        '-P', '--parameter',
+        help='Parameter to extract',
+        required=False,
+    )
+    parser.add_argument(
+        '-S', '--section',
+        default='/',
+        help='Section to extract',
+        required=False,
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='store_true',
+        default=False,
+        help='Return version',
+        required=False,
+    )
+    parser.add_argument(
+        'yaml_files',
+        help='YAML files to read',
+        nargs='*',
+    )
+    args = parser.parse_args()
+    debug = args.debug
+    input_separator = args.input_separator
+    output_file = args.output_file
+    section = args.section
+    parameter = args.parameter
+    yaml_files = args.yaml_files
+    data = dict()
+
+    if debug > 0:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug('debug=%s', args.debug)
+
+    logging.debug('yaml_files=%s', yaml_files)
+    logging.debug('parameter=%s', parameter)
+    logging.debug('input_separator=%s', input_separator)
+    logging.debug('output_file=%s', output_file)
+    logging.debug('section=%s', section)
+
+    if args.version is True:
+        print(version)
+        return
+
+    n_yaml_files = len(yaml_files)
+    if n_yaml_files > 1:
+        logging.error('Only one YAML file please!')
+        exit(2)
+    elif n_yaml_files == 0:
+        logging.debug('Reading from stdin!')
+        input_str = sys.stdin.read()
+        data = yaml.load(input_str)
+    else:
+        filename = yaml_files[0]
+        try:
+            with open(filename, 'r') as f:
+                data = yaml.load(f)
+        except IOError:
+            logging.error("File '%s' not found!", filename)
+            sys.exit(1)
+
+    logging.debug('data=%s', data)
+
+    section_path = get_section_path(section, input_separator)
+    parameter_path = get_parameter_path(parameter, input_separator)
+
+    keys = section_path + parameter_path
+
+    ptr = data
+    try:
+        for key in keys:
+            ptr = ptr[key]
+    except KeyError:
+        logging.error("Key '%s' not found!", key)
+        sys.exit(1)
+
+    kwargs = {
+        'canonical': False,
+        'default_flow_style': False,
+        'explicit_start': True,
+        'explicit_end': True,
+        'width': 50,
+        'indent': 4,
+        'default_style': '',
+    }
+
+    dump = yaml.dump(ptr, **kwargs)
+
+    if output_file is not None:
+        with open(output_file, 'w') as f:
+            print(dump, file=f)
+    else:
+        print(dump)
+
+if __name__ == "__main__":
+    main()

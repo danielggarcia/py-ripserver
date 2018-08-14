@@ -1,0 +1,195 @@
+#!/opt/py-ripserver/venv/bin/python3.5
+#
+# vim:ts=4:sw=4:expandtab
+#
+######################################################################
+
+from __future__ import print_function
+
+import argparse
+import logging
+import os
+import sys
+import yaml
+
+import yaml_utilities
+from yaml_utilities import B64, R13, Vault
+
+from yaml_utilities import version, get_section_path, get_parameter_path
+
+_description = """This small utility extracts a parameter value from a
+configuration file. At this time, only the yaml format is supported."""
+
+_epilog = """
+Example(s):
+    %(script)s -h                          - To provide this help
+    %(script)s -P name config.yml          - To return the value of name var
+    %(script)s -S user -P name config.yml  - Same with a section
+    """ % {
+        'script': os.path.basename(sys.argv[0]),
+    }
+
+
+def get_value(data, steps):
+    assert type(steps) is list
+    assert type(data) is dict
+
+    value = data
+    for s in steps:
+        try:
+            value = value[s]
+            vtype = type(value)
+        except KeyError:
+            raise KeyError("Invalid key", s)
+
+    return value, vtype
+
+
+def formatted_output(value, output_separator):
+    output = ''
+    if type(value) == list:
+        for index, item in enumerate(value):
+            if (index+1) != len(value):
+                output += value[index] + output_separator
+            else:
+                output += value[index]
+    else:
+        output = value
+
+    return output
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=_description,
+        epilog=_epilog,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        default=False,
+        help='Debug mode',
+        required=False,
+    )
+    parser.add_argument(
+        '-D', '--default-value',     # --default-value='' works, -D '' doesn't!
+        default=None,
+        help='Default value if not found',
+        required=False,
+    )
+    parser.add_argument(
+        '-e', '--environment',
+        action='count',
+        default=0,
+        help='Environmnet variables override those provided',
+        required=False,
+    )
+    parser.add_argument(
+        '-I', '--input-separator',
+        default='/',
+        help='Separator used in input parameters',
+        required=False,
+    )
+    parser.add_argument(
+        '-O', '--output-separator',
+        default='\n',
+        help='Separator used in output values',
+        required=False,
+    )
+    parser.add_argument(
+        '-P', '--parameter',
+        help='Parameter to extract',
+        required=False,
+    )
+    parser.add_argument(
+        '-S', '--section',
+        help='Section of the parameter',
+        required=False,
+    )
+    parser.add_argument(
+        '-s', '--spaced',
+        action='store_true',
+        default=False,
+        help='Use space to separate values in list/dict',
+        required=False,
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='store_true',
+        default=False,
+        help='Return version',
+        required=False,
+    )
+    parser.add_argument(
+        'yaml_files',
+        help='YAML files to read',
+        nargs='*',
+    )
+    args = parser.parse_args()
+    debug = args.debug
+    input_separator = args.input_separator
+    output_separator = args.output_separator
+    section = args.section
+    spaced = args.spaced
+    parameter = args.parameter
+    default_value = args.default_value
+    yaml_files = args.yaml_files
+    data = dict()
+    value = ''
+
+    if debug > 0:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug('debug=%s', args.debug)
+
+    if spaced:
+        output_separator = ' '
+
+    logging.debug('yaml_files=%s', yaml_files)
+    logging.debug('default_value=%s', default_value)
+    logging.debug('parameter=%s', parameter)
+    logging.debug('input_separator=%s', input_separator)
+    logging.debug('output_separator=%s', output_separator)
+    logging.debug('section=%s', section)
+
+    if args.version is True:
+        print(version)
+        return
+
+    n_yaml_files = len(yaml_files)
+    if n_yaml_files > 1:
+        logging.error('No more than one YAMl file!')
+        exit(1)
+    elif n_yaml_files == 0:
+        logging.debug('Reading from stdin')
+        input_str = sys.stdin.read()
+        data = yaml.load(input_str)
+    else:
+        with open(yaml_files[0], 'r') as f:
+            data = yaml.load(f)
+
+    logging.debug('data=%s', data)
+
+    section_path = get_section_path(section, input_separator)
+    parameter_path = get_parameter_path(parameter, input_separator)
+
+    path = section_path + parameter_path
+
+    try:
+        value, vtype = get_value(data, path)
+    except KeyError as e:
+        if default_value is not None:
+            value = default_value
+        else:
+            logging.error(e)
+
+    logging.debug('value=%s', value)
+    logging.debug('vtype=%s', vtype)
+
+    if type(value) in [Vault, R13, B64]:
+        value = value.decode()
+
+    print(formatted_output(value, output_separator))
+
+
+main()

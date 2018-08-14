@@ -1,0 +1,198 @@
+#!/opt/py-ripserver/venv/bin/python3.5
+#
+# vim:ts=4:sw=4:expandtab
+#
+######################################################################
+
+import argparse
+import logging
+import os
+import sys
+
+import yaml
+
+from yaml_utilities import get_section_path, version
+
+
+_description = """This small utility extracts a list of parameters given a
+section, a min and max depth.
+"""
+
+_epilog = """
+Example(s):
+    %(script)s -h                    - To provide this help
+    %(script)s config.yml            - To return parameters from top level
+    %(script)s --spaced config.yml   - Same as above using a space as separator
+    %(script)s -S user config.yml    - Same starting from a sub-node
+    """ % {'script': os.path.basename(sys.argv[0])}
+
+separator = '/'
+
+
+def extract_parameters(data, min_depth=1, max_depth=1):
+    """
+    BEWARE does not support min_depth other than 1
+    """
+    assert type(min_depth) is int
+    assert type(max_depth) is int
+    # assert min_depth > 1
+    assert max_depth >= min_depth
+
+    logging.debug('Called with (data,min_depth,max_depth)= %s,%s,%s',
+                  data, min_depth, max_depth)
+
+    parameters = list()
+
+    if type(data) is dict:
+        keys = data.keys()
+        if max_depth > 1:
+            logging.debug('Trying to get deeper')
+            for k in sorted(keys):
+                logging.debug('Analyzing %s', k)
+                if type(data[k]) is dict:
+                    logging.debug('Going deeper on %s', k)
+                    sp = extract_parameters(
+                        data=data[k],
+                        min_depth=min_depth-1,
+                        max_depth=max_depth-1,
+                    )
+                    k_p = [k + separator + p for p in sp]
+                    parameters.extend(k_p)
+                else:
+                    parameters.append(k)
+        else:
+            parameters = keys
+
+    return parameters
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=_description,
+        epilog=_epilog,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        default=False,
+        help='Debug mode',
+        required=False,
+    )
+    parser.add_argument(
+        '-I', '--input-separator',
+        default='/',
+        help='Separator used in section and parameter input parameters',
+        required=False,
+    )
+    parser.add_argument(
+        '-L', '--min-depth',
+        default=1,
+        help='Minimum depth of search',
+        required=False,
+        type=int,
+    )
+    parser.add_argument(
+        '-M', '--max-depth',
+        default=1,
+        help='Maximum depth of search',
+        required=False,
+        type=int,
+    )
+    parser.add_argument(
+        '-O', '--output-separator',
+        default='\n',
+        help='Separator used to display output outputs',
+        required=False,
+    )
+    parser.add_argument(
+        '-S', '--section',
+        help='Parent section of the parameters',
+        required=False,
+    )
+    parser.add_argument(
+        '--spaced',
+        action="store_true",
+        default=False,
+        help='Use a space between parameters',
+        required=False,
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='store_true',
+        default=False,
+        help='Return the version',
+        required=False,
+    )
+    parser.add_argument(
+        'yaml_file',
+        help='YAML file to use',
+        nargs='*',
+    )
+    args = parser.parse_args()
+    yaml_files = args.yaml_file
+    input_separator = args.input_separator
+    max_depth = args.max_depth
+    min_depth = args.min_depth
+    output_separator = args.output_separator
+    section = args.section
+
+    if args.version is True:
+        print(version)
+        return
+
+    if args.spaced is True:
+        output_separator = ' '
+
+    data = dict()
+
+    if args.debug > 0:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug('debug=%s', args.debug)
+
+    logging.debug('yaml_files=%s', yaml_files)
+    logging.debug('max_depth=%s', max_depth)
+    logging.debug('min_depth=%s', min_depth)
+    logging.debug('section=%s', section)
+    logging.debug('input_separator=%s', input_separator)
+    logging.debug('output_separator=%s', output_separator)
+
+    n_yaml_files = len(yaml_files)
+    if n_yaml_files > 1:
+        logging.error('No more than one YAMl file!')
+        exit(1)
+    elif n_yaml_files == 0:
+        logging.debug('Reading from stdin')
+        input_str = sys.stdin.read()
+        try:
+            data = yaml.load(input_str)
+        except Exception:
+            logging.error('Invalid YAML on stdin')
+            exit(2)
+    else:
+        with open(yaml_files[0], 'r') as f:
+            try:
+                data = yaml.load(f)
+            except Exception:
+                logging.error('Invalid YAML in file')
+                exit(2)
+
+    section_path = get_section_path(section, input_separator)
+
+    for s in section_path:
+        logging.debug('s=%s', s)
+        try:
+            data = data[s]
+        except KeyError:
+            raise KeyError("Invalid key", s)
+
+    # We are now in the section that matters.
+    try:
+        parameters = extract_parameters(data, min_depth, max_depth)
+    except KeyError as e:
+        logging.error(e)
+        exit(1)
+
+    print output_separator.join(parameters)
+
+main()

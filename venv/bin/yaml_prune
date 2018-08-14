@@ -1,0 +1,173 @@
+#!/opt/py-ripserver/venv/bin/python3.5
+#
+# vim:ts=4:sw=4:expandtab
+#
+######################################################################
+
+from __future__ import print_function
+
+import argparse
+import logging
+import os
+import sys
+import yaml
+
+from yaml_utilities import get_parameter_path, get_section_path, version
+
+_description = """This small utility extracts a yaml file from another
+"""
+
+_epilog = """
+Example(s):
+    %(script)s -h                             - To provide this help
+    %(script)s -S /users -                    - Same with output file
+    %(script)s -S /users config.yml           - Append section to content
+    %(script)s -S /users -O o.yml config.yml  - Same with output file
+    """ % {
+        'script': os.path.basename(sys.argv[0]),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=_description,
+        epilog=_epilog,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        default=False,
+        help='Debug mode',
+        required=False,
+    )
+    parser.add_argument(
+        '-I', '--input-separator',
+        default='/',
+        help='Separator used in input parameters',
+        required=False,
+    )
+    parser.add_argument(
+        '-O', '--output-file',
+        help='Output file',
+        required=False,
+    )
+    parser.add_argument(
+        '-P', '--parameter',
+        help='Old parameter name',
+        required=False,
+    )
+    parser.add_argument(
+        '-r', '--revert-logic',
+        action='store_true',
+        default=False,
+        help='Keep instead of deleting',
+        required=False,
+    )
+    parser.add_argument(
+        '-S', '--section',
+        default='/',
+        help='Old section name',
+        required=False,
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='store_true',
+        default=False,
+        help='Return version',
+        required=False,
+    )
+    parser.add_argument(
+        'yaml_files',
+        help='YAML files to read',
+        nargs='*',
+    )
+    args = parser.parse_args()
+    debug = args.debug
+    input_separator = args.input_separator
+    output_file = args.output_file
+    revert_logic = args.revert_logic
+    section = args.section
+    parameter = args.parameter
+    yaml_files = args.yaml_files
+    data = dict()
+
+    if debug > 0:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug('debug=%s', args.debug)
+
+    logging.debug('yaml_files=%s', yaml_files)
+    logging.debug('input_separator=%s', input_separator)
+    logging.debug('parameter=%s', parameter)
+    logging.debug('output_file=%s', output_file)
+    logging.debug('revert_logic=%s', revert_logic)
+    logging.debug('section=%s', section)
+
+    if args.version is True:
+        print(version)
+        return
+
+    n_yaml_files = len(yaml_files)
+    if n_yaml_files > 1:
+        logging.error('Only one YAML file please!')
+        exit(2)
+    elif n_yaml_files == 0:
+        logging.debug('Reading YAML from stdin')
+        input_str = sys.stdin.read()
+        data = yaml.load(input_str)
+    else:
+        with open(yaml_files[0], 'r') as f:
+            data = yaml.load(f)
+
+    logging.debug('data=%s', data)
+
+    section_path = get_section_path(section, input_separator)
+    parameter_path = get_parameter_path(parameter, input_separator)
+    keys = section_path + parameter_path
+
+    logging.debug('Keys: %s', keys)
+
+    if revert_logic:
+        logging.debug('keep instead of deleting!')
+        new_data = dict()
+        d = new_data
+        content = data
+        logging.debug('content: %s ', content)
+        for i, key in enumerate(keys):
+            if (i+1) < len(keys):
+                d[key] = dict()
+                content = content[key]
+                d = d[key]
+            else:
+                d[key] = content[key]
+    else:
+        new_data = data.copy()
+        d = new_data
+        for i, key in enumerate(keys):
+            if key not in d:
+                logging.warning("Key '%s' not found or already deleted!", key)
+                break
+            else:
+                if (i+1) < len(keys):
+                    d = d[key]
+                else:
+                    del d[key]
+
+    kwargs = {
+        'default_flow_style': False,
+        'canonical': False,
+        'width': 50,
+        'indent': 4,
+        'default_style': '',
+    }
+
+    dump = yaml.dump(new_data, **kwargs)
+
+    if output_file is not None:
+        with open(output_file, 'w') as f:
+            print(dump, file=f)
+    else:
+        print(dump)
+
+
+main()
