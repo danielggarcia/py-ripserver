@@ -29,7 +29,9 @@ RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
 LOGFILEPATH = '/var/robot/log/RIPOctave.log'
 PIDFILEPATH = '/tmp/py_ripserver_'
 PNGIMAGEPATH='/var/robot/tmp/depthimage.png'
-LOCKFILE='/var/robot/tmp/.lock'
+MARKERPNGIMAGEPATH='/var/robot/tmp/arucomarker.png'
+KINECT_LOCKFILE='/var/robot/tmp/.kinect_lock'
+ARUCO_LOCKFILE='/var/robot/tmp/.aruco_lock'
 LASTOCTAVECODEPATH='/var/robot/cache/usercode_'
 
 # Logger Configuration
@@ -135,8 +137,10 @@ class RIPOctave(RIPGeneric):
     octave.push("debugLevel", 2)
     
     octave.addpath(OCTAVEPATH)
+    octave.addpath(OCTAVEPATH + '/common')
     octave.addpath(OCTAVEPATH + '/kinect')
     octave.addpath(OCTAVEPATH + '/arduino')
+    octave.addpath(OCTAVEPATH + '/aruco')
     octave.addpath(OCTAVEPATH + '/user')
       
     try:
@@ -559,12 +563,12 @@ class RIPOctave(RIPGeneric):
         bufferedImage = BytesIO()
         try:
           for i in range(20):
-            if os.path.exists(LOCKFILE):
+            if os.path.exists(KINECT_LOCKFILE):
                 time.sleep(0.1)
             else:
                 break
             if i == 20:
-                os.remove(LOCKFILE)
+                os.remove(KINECT_LOCKFILE)
           im = Image.open(PNGIMAGEPATH)
         except Exception as e:
           logger.error("getDepthImageBase64() Image.open: Error recovering image: " + str(e))
@@ -585,8 +589,8 @@ class RIPOctave(RIPGeneric):
       depthImageBase64 = ''
       logger.error("getDepthImageBase64(imageArray): Error recovering image: " + str(e))
     finally:
-      if os.path.exists(LOCKFILE):
-        os.remove(LOCKFILE)
+      if os.path.exists(KINECT_LOCKFILE):
+        os.remove(KINECT_LOCKFILE)
     return depthImageBase64
 
   def logAction(self, action):
