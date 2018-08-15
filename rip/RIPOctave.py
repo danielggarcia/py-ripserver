@@ -22,17 +22,17 @@ import os
 import traceback
 import shutil
 
-TIMEOUT = 60
+DEBUG = False
+DEFAULT_EXECUTION_TIMEOUT = 60
 OCTAVEPATH = '/home/pi/workspace/robot/octave'
 CACHEBASEPATH = '/var/robot/cache/cache_'
 RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
 LOGFILEPATH = '/var/robot/log/RIPOctave.log'
 PIDFILEPATH = '/tmp/py_ripserver_'
-PNGIMAGEPATH='/var/robot/tmp/depthimage.png'
-MARKERPNGIMAGEPATH='/var/robot/tmp/arucomarker.png'
+KINECT_PNGIMAGEPATH='/var/robot/tmp/depthimage.png'
+ARUCO_PNGIMAGEPATH='/var/robot/tmp/arucomarker.png'
 KINECT_LOCKFILE='/var/robot/tmp/.kinect_lock'
 ARUCO_LOCKFILE='/var/robot/tmp/.aruco_lock'
-LASTOCTAVECODEPATH='/var/robot/cache/usercode_'
 
 # Logger Configuration
 logger = logging.getLogger('oct2py')
@@ -84,7 +84,7 @@ signal.signal(signal.SIGALRM, timeoutHandler)
 # Register signal for SIGUSR2 (watchdog)
 signal.signal(signal.SIGUSR2, watchDog)
   
-octave = Oct2Py(None, logger, TIMEOUT)
+octave = Oct2Py(None, logger, DEFAULT_EXECUTION_TIMEOUT)
 
 class RIPOctave(RIPGeneric):
   '''
@@ -110,6 +110,7 @@ class RIPOctave(RIPGeneric):
     self.Mensaje = ""
     self.previousMessage = []
     self.KinectImageBase64 = ""
+    self.CeilingImageBase64 = ""
     self.Ready = 0
     self.currentIteration = 0
     self.resultFilePath = ''
@@ -134,7 +135,11 @@ class RIPOctave(RIPGeneric):
     octave.eval('global userId;')
     
     octave.push("Ready", 0)
-    octave.push("debugLevel", 2)
+
+    if DEBUG:
+      octave.push("debugLevel", 5)
+    else:
+      octave.push("debugLevel", 2)
     
     octave.addpath(OCTAVEPATH)
     octave.addpath(OCTAVEPATH + '/common')
@@ -278,13 +283,13 @@ class RIPOctave(RIPGeneric):
         'precision':'0'
     })
     self.readables.append({
-        'name':'lastOctaveCode',
-        'description':'Gets a string with the last octave code executed in the server',
+        'name':'CeilingImageBase64',
+        'description':'Image retrieved from ceiling camera in Base64 format',
         'type':'str',
         'min':'0',
         'max':'Inf',
         'precision':'0'
-    })
+      })
     self.writables.append({
         'name':'currentAction',
         'description':'Sets an action to perform in the robot: D(-255,255), I(-255,255),P,K,F,B,L,R,S,U',
@@ -317,12 +322,15 @@ class RIPOctave(RIPGeneric):
   # This method will be invoked from HttpServer.SSE
   def start(self):
     try:
-      logger.info("STARTING SERVER. EXECUTION TIMEOUT SET TO " + str(TIMEOUT) + " SECONDS.")
+      logger.info("STARTING SERVER. EXECUTION TIMEOUT SET TO " + str(DEFAULT_EXECUTION_TIMEOUT) + " SECONDS.")
       super(RIPOctave, self).start()
-      octave.push('debugLevel', 2)
       # Function 'cacheData' appends every reading from arduino and kinect in a variable within the mat file provided
       # in global variable 'cachePath'.
-      # This function is invoked from three octave functions: updateData(), Kinect.getImageUint8() and Kinect.getImageUint16().
+      # This function is invoked from the following octave functions: 
+      #   updateData(): saves information to 'robotData' array
+      #   getDepth(): saves information to 'robotDepthImages' and 'robotDepthImageTimestamps' arrays
+      #   getDepthCm(): saves information to 'robotDepthImagesCm' and 'robotDepthImageTimestampsCm' arrays
+      #   getMarkers(): saves information to 'cornerData', 'rotationData' and 'translationData' arrays
       # The cached data avoids data loss in case that connection is interrupted.
       # The octave function getLastCachedDataFilePath() will provide the last cached file, whilst saveEnvironment() will
       # make use of that file to generate a .mat file with all the data.
@@ -354,11 +362,23 @@ class RIPOctave(RIPGeneric):
           octave.arduinoProcessInputs(values[i])
         # octaveCode
         elif(variables[i] == 'octaveCode'):
+
           code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
-          code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v')
+          code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v').replace('%', '\%')
+          numSecs = DEFAULT_EXECUTION_TIMEOUT
           try:
-            logger.info("Sending code to robot...")
-            self.executeOctaveCode(code)
+
+            if(code.find('setExecutionTimeout(') == 0):
+              try:
+                numSecs = int(code[code.find('(') + 1:code.find(')')])
+                if numSecs > 900:
+                  numSecs = 900
+                logger.info("Timeout changed to " + str(numSecs))
+              except Exception as e:
+                numSecs = 60
+                pass
+            self.executeOctaveCode(code, numSecs)
+            
           except Exception as e:
             logger.warn("Error while processing robot code: "+ str(e))
             pass
@@ -384,21 +404,11 @@ class RIPOctave(RIPGeneric):
       name = variables[i]
       try:
         logger.info("get(): INIT")
-        if(variables[i] == 'lastOctaveCode'):
-          logger.info("get(): lastOctaveCode")
-          if os.path.exists(LASTOCTAVECODEPATH + self.userId + ".m"):
-            logger.info("get(): lastOctaveCode: Exists " + LASTOCTAVECODEPATH + self.userId + ".m")
-            with open(LASTOCTAVECODEPATH + self.userId + ".m") as f:
-              toReturn['lastOctaveCode'] = f.read()
-              logger.info("get(): lastOctaveCode Returning " + toReturn['lastOctaveCode'])
-          else:
-            logger.info("get(): lastOctaveCode: Does not exist " + LASTOCTAVECODEPATH + self.userId + ".m")
-        else:
-          # TODO: Intentar obtener el contenido del fichero .mat, que tiene formato binario
-          #with open(self.resultFilePath) as f: toReturn['matFile'] = f.read()
-          logger.debug("get(): octave.pull(" + str(name) + ")")
-          toReturn[name] = octave.pull(name)
-          logger.debug("get(): " + str(name) + " = " + str(toReturn[name]))
+        # TODO: Intentar obtener el contenido del fichero .mat, que tiene formato binario
+        #with open(self.resultFilePath) as f: toReturn['matFile'] = f.read()
+        logger.debug("get(): octave.pull(" + str(name) + ")")
+        toReturn[name] = octave.pull(name)
+        logger.debug("get(): " + str(name) + " = " + str(toReturn[name]))
       except Exception as e:
         logger.error("get(): Error: " + str(e))
         pass
@@ -406,7 +416,6 @@ class RIPOctave(RIPGeneric):
     return toReturn
 
   def getValuesToNotify(self):
-    #pdb.set_trace()
     returnValue = self.previousMessage
     #logger.debug("getValuesToNotify(): PreviousValue = " + str(returnValue))
     try:
@@ -415,6 +424,7 @@ class RIPOctave(RIPGeneric):
       if self.currentIteration >= 3:
         self.currentIteration = 0
         self.KinectImageBase64 = self.getDepthImageBase64()
+        self.CeilingImageBase64 = self.getCeilingImageBase64()
     except:
       pass
     try:
@@ -433,8 +443,8 @@ class RIPOctave(RIPGeneric):
       octaveLog = self.getLog()
 
       returnValue = [
-        ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL', 'TSM', 'Mensaje', 'KinectImageBase64', 'Ready', 'octaveLog'],
-        [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.Ready, octaveLog]
+        ['time', 'TS', 'DT', 'CD', 'CI', 'MP', 'MS','IrF','IrR','IrL', 'TSM', 'Mensaje', 'KinectImageBase64', 'CeilingImageBase64', 'Ready', 'octaveLog'],
+        [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.CeilingImageBase64, self.Ready, octaveLog]
       ]
       self.previousMessage = returnValue
       self.keepAlive()
@@ -458,11 +468,12 @@ class RIPOctave(RIPGeneric):
       logger.error("getLog(): " + str(e))
     return result
 
-  def executeOctaveCode(self, code):
+  def executeOctaveCode(self, code, timeout=DEFAULT_EXECUTION_TIMEOUT):
     # Set timeout for code execution
-    signal.alarm(TIMEOUT+10)
+    signal.alarm(DEFAULT_EXECUTION_TIMEOUT+10)
     try:
-      octave.feval('executeOctaveCode', code, timeout=TIMEOUT)
+      logger.info("Sending code to robot with timeout = " + str(timeout) + ": \n\n" + repr(code) + "\n\n")
+      octave.feval('executeOctaveCode', code, timeout)
     except TimeoutError as exc:
       logger.error("Timeout")
       self.start()
@@ -559,32 +570,12 @@ class RIPOctave(RIPGeneric):
       logger.debug("getDepthImageBase64(imageArray): BEGIN")
       retrieved = octave.getDepthImage()
 
-      if retrieved == 1 and os.path.exists(PNGIMAGEPATH):
-        bufferedImage = BytesIO()
+      if retrieved == 1 and os.path.exists(KINECT_PNGIMAGEPATH):
         try:
-          for i in range(20):
-            if os.path.exists(KINECT_LOCKFILE):
-                time.sleep(0.1)
-            else:
-                break
-            if i == 20:
-                os.remove(KINECT_LOCKFILE)
-          im = Image.open(PNGIMAGEPATH)
+          depthImageBase64 = self.getImageBase64(KINECT_PNGIMAGEPATH, KINECT_LOCKFILE)
         except Exception as e:
           logger.error("getDepthImageBase64() Image.open: Error recovering image: " + str(e))
           raise e
-        try:  
-          im.save(bufferedImage, format="PNG")
-        except Exception as e:
-          logger.error("getDepthImageBase64() Image.save: Error recovering image: " + str(e))
-          raise e
-        imstr = str(base64.b64encode(bufferedImage.getvalue())).split('\'')
-        if len(imstr) > 1:
-          depthImageBase64 = imstr[1]
-          logger.debug("getDepthImageBase64(imageArray): Received image: " + str(len(self.KinectImageBase64)))
-        else:
-          depthImageBase64 = ''
-          logger.warning("getDepthImageBase64(imageArray): No image received")
     except Exception as e:
       depthImageBase64 = ''
       logger.error("getDepthImageBase64(imageArray): Error recovering image: " + str(e))
@@ -592,6 +583,66 @@ class RIPOctave(RIPGeneric):
       if os.path.exists(KINECT_LOCKFILE):
         os.remove(KINECT_LOCKFILE)
     return depthImageBase64
+
+  def getCeilingImageBase64(self):
+    ceilingImageBase64 = ''
+    try:
+      logger.debug("getCeilingImageBase64(imageArray): BEGIN")
+      retrieved = octave.getMarkerInfo(1)
+
+      if os.path.exists(ARUCO_PNGIMAGEPATH):
+        try:
+          ceilingImageBase64 = self.getImageBase64(ARUCO_PNGIMAGEPATH, ARUCO_LOCKFILE)
+        except Exception as e:
+          logger.error("getDepthImageBase64() Image.open: Error recovering image: " + str(e))
+          raise e
+    except Exception as e:
+      ceilingImageBase64 = ''
+      logger.error("getDepthImageBase64(imageArray): Error recovering image: " + str(e))
+    finally:
+      if os.path.exists(ARUCO_LOCKFILE):
+        os.remove(ARUCO_LOCKFILE)
+    return ceilingImageBase64
+
+  def getImageBase64(self, imagePath, lockFilePath):
+    imageBase64 = ''
+    try:
+      logger.debug("getImageBase64(imageArray): BEGIN")
+      retrieved = octave.getDepthImage()
+
+      if retrieved == 1 and os.path.exists(imagePath):
+        bufferedImage = BytesIO()
+        try:
+          for i in range(20):
+            if os.path.exists(lockFilePath):
+                time.sleep(0.1)
+            else:
+                break
+            if i == 20:
+                os.remove(lockFilePath)
+          im = Image.open(imagePath)
+        except Exception as e:
+          logger.error("getImageBase64() Image.open: Error recovering image: " + str(e))
+          raise e
+        try:  
+          im.save(bufferedImage, format="PNG")
+        except Exception as e:
+          logger.error("getImageBase64() Image.save: Error recovering image: " + str(e))
+          raise e
+        imstr = str(base64.b64encode(bufferedImage.getvalue())).split('\'')
+        if len(imstr) > 1:
+          imageBase64 = imstr[1]
+          logger.debug("getImageBase64(imageArray): Received image: " + str(len(imstr)))
+        else:
+          imageBase64 = ''
+          logger.warning("getImageBase64(imageArray): No image received")
+    except Exception as e:
+      imageBase64 = ''
+      logger.error("getImageBase64(imageArray): Error recovering image: " + str(e))
+    finally:
+      if os.path.exists(lockFilePath):
+        os.remove(lockFilePath)
+    return imageBase64
 
   def logAction(self, action):
     return {
