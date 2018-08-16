@@ -21,6 +21,7 @@ import signal
 import os
 import traceback
 import shutil
+import _thread
 
 DEBUG = False
 DEFAULT_EXECUTION_TIMEOUT = 60
@@ -377,7 +378,10 @@ class RIPOctave(RIPGeneric):
               except Exception as e:
                 numSecs = 60
                 pass
-            self.executeOctaveCode(code, numSecs)
+                
+            variables[i] = ""
+            _thread.start_new_thread(self.executeOctaveCode, (code, numSecs))
+            #self.executeOctaveCode(code, numSecs)
             
           except Exception as e:
             logger.warn("Error while processing robot code: "+ str(e))
@@ -594,11 +598,11 @@ class RIPOctave(RIPGeneric):
         try:
           ceilingImageBase64 = self.getImageBase64(ARUCO_PNGIMAGEPATH, ARUCO_LOCKFILE)
         except Exception as e:
-          logger.error("getDepthImageBase64() Image.open: Error recovering image: " + str(e))
+          logger.error("getCeilingImageBase64() Image.open: Error recovering image: " + str(e))
           raise e
     except Exception as e:
       ceilingImageBase64 = ''
-      logger.error("getDepthImageBase64(imageArray): Error recovering image: " + str(e))
+      logger.error("getCeilingImageBase64(imageArray): Error recovering image: " + str(e))
     finally:
       if os.path.exists(ARUCO_LOCKFILE):
         os.remove(ARUCO_LOCKFILE)
