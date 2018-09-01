@@ -357,7 +357,6 @@ class RIPOctave(RIPGeneric):
       octave.push("userId", self.userId)
       octave.robotSetup()
       time.sleep(10)
-      keepAlive();
     except Exception as e:
       logger.error("start(): " + str(e))
       pass
@@ -424,7 +423,7 @@ class RIPOctave(RIPGeneric):
           logger.info("Code sent to robot.")
         elif(variables[i] == 'userId'):
           if type(values) is list and len(values) == 1:
-            logger.info('Setting user ID to: ' + str(values[i]))
+            #logger.info('Setting user ID to: ' + str(values[i]))
             self.userId = str(values[i])
             self.resultFilePath = CACHEBASEPATH + self.userId + "_" + self.currentSessionTimestamp + '.mat'
             octave.push('userId', self.userId)
