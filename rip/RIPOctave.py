@@ -22,10 +22,12 @@ import os
 import traceback
 import shutil
 import _thread
+import subprocess
 
 DEBUG = False
 DEFAULT_EXECUTION_TIMEOUT = 60
 OCTAVEPATH = '/home/pi/workspace/robot/octave'
+USERCODEPATH='/home/pi/workspace/robot/octave/user/usercode.m'
 CACHEBASEPATH = '/var/robot/cache/cache_'
 RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
 LOGFILEPATH = '/var/robot/log/RIPOctave.log'
@@ -59,10 +61,12 @@ class TimeoutError(Exception):
 def timeoutHandler(signum, frame):
   raise TimeoutError()
 
-# Reads and increases by one a value written in the file /tmp/py_ripserver_PID
-# The watchdog will check if the value has been increased. If not, it will reset
-# the server process
 def watchDog(signum, frame):
+  '''
+  Reads and increases by one a value written in the file /tmp/py_ripserver_PID
+  The watchdog will check if the value has been increased. If not, it will reset
+  the server process
+  '''
   try:
     logger.debug("watchDog(): entering handler")
     currentPid = os.getpid()
@@ -117,6 +121,7 @@ class RIPOctave(RIPGeneric):
     self.resultFilePath = ''
     self.userId = '0000'
     self.currentSessionTimestamp = ''
+    self.captureFrames = False
 
     octave.eval('global dataArray;')
     octave.eval('global messageArray;')
@@ -318,10 +323,19 @@ class RIPOctave(RIPGeneric):
     logger.info("ENVIRONMENT SETUP COMPLETED")
 
   def __del__(self):
-    octave.endSession()
+    subprocess.Popen(['/bin/bash', '-c', "nohup bash -c 'sleep 5 && watchdog restart' 2> /dev/null &"])
+    subprocess.Popen(['/bin/bash', '-c', "nohup bash -c 'sleep 4 && rm /var/robot/tmp' 2> /dev/null &"])
+    exit(1)
+    #octave.endSession()
 
   # This method will be invoked from HttpServer.SSE
   def start(self):
+    '''
+    Method that will be invoked when the user logs in, and that performs the following actions:
+        - Generates a cache file identified by the user ID obtained from EjsS and by the logon time stamp.
+        - Invokes the Octave robotSetup method, which initializes the streaming, Arduino, ArUco and Kinect services.
+        - Makes a first data request to the robot to obtain its initial state.
+    '''
     try:
       logger.info("STARTING SERVER. EXECUTION TIMEOUT SET TO " + str(DEFAULT_EXECUTION_TIMEOUT) + " SECONDS.")
       super(RIPOctave, self).start()
@@ -342,15 +356,20 @@ class RIPOctave(RIPGeneric):
       octave.push("cachePath", self.resultFilePath)
       octave.push("userId", self.userId)
       octave.robotSetup()
-      time.sleep(3)
-      octave.arduinoProcessInputs("K")
+      time.sleep(10)
+      keepAlive();
     except Exception as e:
       logger.error("start(): " + str(e))
       pass
 
   def set(self, expid, variables, values):
     '''
-    Writes one or more variables to the workspace of the current Octave session
+    Assigns a value to a variable.
+    This method is invocable from the EjsS interface and serves to transmit information to the robot from the client side.
+    The three possible variables that are handled in this method are the following:
+         - currentAction: corresponds to an action of the robot ('K','F', 'B', 'R', 'L') and is sent to Arduino by invoking the arduinoProcessInputs() method.
+         - octaveCode: corresponds to the code that must be sent and executed in the robot, so the executeOctaveCode() method is invoked.
+        - userId: corresponds to the user identifier, which will be used to make the session unique and establish the cache file where the values captured by the user will be stored.
     '''
     n = len(variables)
     for i in range(n):
@@ -359,16 +378,32 @@ class RIPOctave(RIPGeneric):
 
         # currentAction
         if(variables[i] == 'currentAction'):
-          logger.info('Sending command: ' + self.logAction(str(values[i])))
-          octave.arduinoProcessInputs(values[i])
+          for j in range(30):
+            try:
+              if(len(values) >= i+1) and (values[i] == 'Q'):
+                logger.info('Shutting down session')
+                subprocess.Popen(['/bin/bash', '-c', "nohup sudo robotwatchdog reset 2> /dev/null &"])
+                time.sleep(5)
+                logger.info('DONE')
+                return
+              if (j == 0) and (len(values) >= i+1):
+                logger.info('Sending command: ' + self.logAction(str(values[i])))
+              else: 
+                logger.warning('Connecting... (' + repr(j) + ')')
+              if (len(values) >= i+1):
+                octave.arduinoProcessInputs(values[i])
+                self.captureFrames = True
+              break
+            except Exception as e:
+              #logger.error("set(currentAction) Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
+              time.sleep(1)
+              pass
         # octaveCode
         elif(variables[i] == 'octaveCode'):
 
-          code = str(values).replace('\\', '\\\\').replace('\n','\\n').replace('\t','\\t').replace('\a', '\\a')
-          code = code.replace('\b','\\f').replace('\r','\\r').replace('\v', '\\v').replace('%', '\%')
           numSecs = DEFAULT_EXECUTION_TIMEOUT
           try:
-
+            code = values
             if(code.find('setExecutionTimeout(') == 0):
               try:
                 numSecs = int(code[code.find('(') + 1:code.find(')')])
@@ -399,7 +434,7 @@ class RIPOctave(RIPGeneric):
         
   def get(self, expid, variables):
     '''
-    Retrieve one or more variables from the workspace of the current Octave session
+    Retrieves one or more variables from the workspace of the current Octave session
     '''
     toReturn = {}
     #logger.debug("get(expid, variables) : (" + str(expid) + "(" + str(len(expid)) + "), " +  str(variables) + "(" + str(len(variables)) + ")")
@@ -408,8 +443,6 @@ class RIPOctave(RIPGeneric):
       name = variables[i]
       try:
         logger.info("get(): INIT")
-        # TODO: Intentar obtener el contenido del fichero .mat, que tiene formato binario
-        #with open(self.resultFilePath) as f: toReturn['matFile'] = f.read()
         logger.debug("get(): octave.pull(" + str(name) + ")")
         toReturn[name] = octave.pull(name)
         logger.debug("get(): " + str(name) + " = " + str(toReturn[name]))
@@ -420,30 +453,36 @@ class RIPOctave(RIPGeneric):
     return toReturn
 
   def getValuesToNotify(self):
+    '''
+    This method is invoked from EjsS periodically to obtain real-time information on the robot's status.
+    The function retrieves the latest sensor values from octave by invoking the updateGlobals method and 
+    recovers a depth image from the Kinect device and a augmented image from the ceiling via the ceiling webcam 
+    in one out of every three invocations of the method in base64 format so that the experience is not computatively penalized. 
+    You then get the system log from the last call. Finally, it stores the results in two arrays that simulate a 
+    set of key value pairs and contain the following elements: 
+    time, TS, DT, CD, CI, MP, MS, IrF, TSM, Message, KinectImageBase64, CeilingImageBase64, Ready, octaveLog.
+    '''
     returnValue = self.previousMessage
-    #logger.debug("getValuesToNotify(): PreviousValue = " + str(returnValue))
-    try:
-      logger.debug("getValuesToNotify(): getDepthImageBase64(): BEGIN")
-      self.currentIteration += 1
-      if self.currentIteration >= 3:
-        self.currentIteration = 0
-        self.KinectImageBase64 = self.getDepthImageBase64()
-        self.CeilingImageBase64 = self.getCeilingImageBase64()
-    except:
-      pass
-    try:
-      result = octave.updateGlobals()
-      self.getGlobalVariables(result)
+    self.Ready = octave.isKinectReady()
+    logger.debug("getValuesToNotify(): getDepthImageBase64(): BEGIN")
+    if self.captureFrames == True:
       try:
-        self.Ready = octave.isKinectReady()
+        if self.Ready:
+          self.KinectImageBase64 = self.getDepthImageBase64()
+        self.CeilingImageBase64 = self.getCeilingImageBase64()
+        self.captureFrames = False
       except Exception as e:
         self.Ready = 0
         logger.error("getValuesToNotify(Ready): WARNING: " + str(e))
         pass
 
-      self.showLogVariables()
-      
-      octaveLog = ""
+    try:
+      result = octave.updateGlobals()
+      self.getGlobalVariables(result)
+
+      if (len(self.previousMessage) == 2) and (len(self.previousMessage[1]) == 16) and (self.TS != self.previousMessage[1][1]):
+        self.showLogVariables()
+
       octaveLog = self.getLog()
 
       returnValue = [
@@ -451,7 +490,6 @@ class RIPOctave(RIPGeneric):
         [self.sampler.lastTime(), self.TS, self.DT, self.CD, self.CI, self.MP, self.MS, self.IrF, self.IrR, self.IrL, self.TSM, self.Mensaje, self.KinectImageBase64, self.CeilingImageBase64, self.Ready, octaveLog]
       ]
       self.previousMessage = returnValue
-      self.keepAlive()
     except Exception as e:
       returnValue = [['id', 'Mensaje'], [-1, str(e)]]
       if str(e) == 'list index out of range':
@@ -461,23 +499,44 @@ class RIPOctave(RIPGeneric):
     return returnValue
 
   def getLog(self):
+    '''
+    Extracts the information stored by the system log, extracts the lines and filters them for later delivery to the user.
+    '''
     result = ""
+    logData = ""
     try:
       result = log_stream.getvalue()
       log_stream.truncate(0)
       log_stream.seek(0)
-      if result is None or len(result) == 0:
-        result = ""
+
+      resultLines = result.splitlines()
+      for line in resultLines:
+        if "Stream 70" in line:
+          continue
+        elif "ans =" in line:
+          continue
+        else:
+          logData = logData + line + "\n"
+
+      if logData is None or len(logData) == 0:
+        logData = ""
     except Exception as e:
       logger.error("getLog(): " + str(e))
-    return result
+    return logData
 
   def executeOctaveCode(self, code, timeout=DEFAULT_EXECUTION_TIMEOUT):
+    '''
+    Writes the code code in the usercode.m file in the /octave/user folder of the robot and have Octave run it.
+    If after timeout seconds the execution of the code has not finished, the execution is automatically aborted.
+    '''
+
     # Set timeout for code execution
     signal.alarm(DEFAULT_EXECUTION_TIMEOUT+10)
     try:
       logger.info("Sending code to robot with timeout = " + str(timeout) + ": \n\n" + repr(code) + "\n\n")
-      octave.feval('executeOctaveCode', code, timeout)
+      with open(USERCODEPATH, 'w') as f:
+        f.write(code)
+      octave.feval('executeOctaveCode', '', timeout)
     except TimeoutError as exc:
       logger.error("Timeout")
       self.start()
@@ -492,10 +551,15 @@ class RIPOctave(RIPGeneric):
   def keepAlive(self):
     try:
       octave.arduinoProcessInputs('K')
+      self.KinectImageBase64 = self.getDepthImageBase64()
+      self.CeilingImageBase64 = self.getCeilingImageBase64()
     except:
       pass
 
   def showLogVariables(self):
+    '''
+    Stores in the system log the information of the attributes TS, DT, CD, CI, MP, MS, IrF, TSM in a human readable format.
+    '''
     txt = "Received values: "
     txt += " [TS: " + "{:.0f}".format(self.TS) + ", "
     txt += "DT: " + "{:.0f}".format(self.DT) + ", "
@@ -509,6 +573,10 @@ class RIPOctave(RIPGeneric):
     logger.info(txt)
 
   def getGlobalVariables(self, result):
+    '''
+    Stores in the TS, DT, CD, CI, MP, MS, IrF, IrF, IrR and IrL variables the values of the array result, 
+    which must have been retrieved from Octave using the updateGlobals function.
+    '''
     self.resetGlobals()
     if type(result) is list:
       logger.debug("getValuesToNotify(): type is list")
@@ -558,6 +626,9 @@ class RIPOctave(RIPGeneric):
       pass
 
   def resetGlobals(self):
+    '''
+    Sets to 0 the local data retrieved from Arduino
+    '''
     self.TS = 0
     self.DT = 0
     self.CD = 0
@@ -569,6 +640,11 @@ class RIPOctave(RIPGeneric):
     self.IrL = 0
 
   def getDepthImageBase64(self):
+    '''
+    Invokes the getDepthImage() method of Octave, generating an image from the depth matrix obtained by Kinect.
+    It is then encoded in base64 format using the getImageBase64() method to facilitate 
+    its delivery to EjsS using the getValuesToNotify() method.
+    '''
     depthImageBase64 = ''
     try:
       logger.debug("getDepthImageBase64(imageArray): BEGIN")
@@ -589,6 +665,11 @@ class RIPOctave(RIPGeneric):
     return depthImageBase64
 
   def getCeilingImageBase64(self):
+    '''
+    Invokes Octave's getMarkerInfo() method, capturing the webcam from the ceiling and augmenting 
+    it with the information from the detected markers.
+    It is then encoded in base64 format for easy delivery to EjsS using the getValuesToNotify() method.
+    '''
     ceilingImageBase64 = ''
     try:
       logger.debug("getCeilingImageBase64(imageArray): BEGIN")
@@ -609,6 +690,12 @@ class RIPOctave(RIPGeneric):
     return ceilingImageBase64
 
   def getImageBase64(self, imagePath, lockFilePath):
+    '''
+    Checks that the lockFilePath file does not exist and then loads the image stored in imagePath 
+    and converts it to the base64 string format.
+    The lockFilePath file is a lock file generated by the services responsible for capturing images 
+    at the beginning of the process, and is deleted when the image is ready for use.
+    '''
     imageBase64 = ''
     try:
       logger.debug("getImageBase64(imageArray): BEGIN")
@@ -649,6 +736,10 @@ class RIPOctave(RIPGeneric):
     return imageBase64
 
   def logAction(self, action):
+    '''
+    Transforms a mnemonic interpetable by arduino ('K','P','D100', etc.) into a string that 
+    can be interpreted by a human being for inclusion in the system log.
+    '''
     return {
       'F' : 'MOVE FORWARD (MANUAL)',
       'B' : 'MOVE BACKWARDS (MANUAL)',
