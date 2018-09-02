@@ -26,8 +26,8 @@ import subprocess
 
 DEBUG = False
 DEFAULT_EXECUTION_TIMEOUT = 60
-OCTAVEPATH = '/home/pi/workspace/robot/octave'
-USERCODEPATH='/home/pi/workspace/robot/octave/user/usercode.m'
+OCTAVEPATH = '/opt/robot/octave'
+USERCODEPATH='/opt/robot/octave/user/usercode.m'
 CACHEBASEPATH = '/var/robot/cache/cache_'
 RESULTMATFILEPATH = '/var/robot/mat/robot.mat'
 LOGFILEPATH = '/var/robot/log/RIPOctave.log'
