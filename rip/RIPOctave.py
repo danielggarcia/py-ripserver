@@ -89,7 +89,6 @@ signal.signal(signal.SIGALRM, timeoutHandler)
 # Register signal for SIGUSR2 (watchdog)
 signal.signal(signal.SIGUSR2, watchDog)
   
-octave = Oct2Py(None, logger, DEFAULT_EXECUTION_TIMEOUT)
 
 class RIPOctave(RIPGeneric):
   '''
@@ -122,38 +121,8 @@ class RIPOctave(RIPGeneric):
     self.userId = '0000'
     self.currentSessionTimestamp = ''
     self.captureFrames = False
+    self.octave = self.octaveSetup()
 
-    octave.eval('global dataArray;')
-    octave.eval('global messageArray;')
-    octave.eval('global TS;')
-    octave.eval('global DT;')
-    octave.eval('global CD;')
-    octave.eval('global CI;')
-    octave.eval('global MP;')
-    octave.eval('global MS;')
-    octave.eval('global IrF;')
-    octave.eval('global IrR;')
-    octave.eval('global IrL;')
-    octave.eval('global Ready;')
-    octave.eval('global octaveCode;')
-    octave.eval('global debugLevel;')
-    octave.eval('global cachePath;')
-    octave.eval('global userId;')
-    
-    octave.push("Ready", 0)
-
-    if DEBUG:
-      octave.push("debugLevel", 5)
-    else:
-      octave.push("debugLevel", 2)
-    
-    octave.addpath(OCTAVEPATH)
-    octave.addpath(OCTAVEPATH + '/common')
-    octave.addpath(OCTAVEPATH + '/kinect')
-    octave.addpath(OCTAVEPATH + '/arduino')
-    octave.addpath(OCTAVEPATH + '/aruco')
-    octave.addpath(OCTAVEPATH + '/user')
-      
     try:
       logger.info("ENVIRONMENT SETUP...")
     except Exception as e:
@@ -322,11 +291,11 @@ class RIPOctave(RIPGeneric):
     })
     logger.info("ENVIRONMENT SETUP COMPLETED")
 
-  def __del__(self):
-    subprocess.Popen(['/bin/bash', '-c', "nohup bash -c 'sleep 5 && watchdog restart' 2> /dev/null &"])
-    subprocess.Popen(['/bin/bash', '-c', "nohup bash -c 'sleep 4 && rm /var/robot/tmp' 2> /dev/null &"])
-    exit(1)
-    #octave.endSession()
+  #def __del__(self):
+  #  subprocess.Popen(['/bin/bash', '-c', "nohup bash -c 'sleep 5 && watchdog restart' 2> /dev/null &"])
+  #  subprocess.Popen(['/bin/bash', '-c', "nohup bash -c 'sleep 4 && rm /var/robot/tmp' 2> /dev/null &"])
+    
+  #  #octave.endSession()
 
   # This method will be invoked from HttpServer.SSE
   def start(self):
@@ -349,13 +318,13 @@ class RIPOctave(RIPGeneric):
       # The cached data avoids data loss in case that connection is interrupted.
       # The octave function getLastCachedDataFilePath() will provide the last cached file, whilst saveEnvironment() will
       # make use of that file to generate a .mat file with all the data.
-      self.currentSessionTimestamp = "{:.0f}".format(octave.generateTimeStamp())
+      self.currentSessionTimestamp = "{:.0f}".format(self.octave.generateTimeStamp())
       self.resultFilePath = CACHEBASEPATH + self.userId + "_" + self.currentSessionTimestamp + '.mat'
       if os.path.exists(RESULTMATFILEPATH):
         os.remove(RESULTMATFILEPATH)
-      octave.push("cachePath", self.resultFilePath)
-      octave.push("userId", self.userId)
-      octave.robotSetup()
+      self.octave.push("cachePath", self.resultFilePath)
+      self.octave.push("userId", self.userId)
+      self.octave.robotSetup()
       time.sleep(10)
     except Exception as e:
       logger.error("start(): " + str(e))
@@ -377,7 +346,7 @@ class RIPOctave(RIPGeneric):
 
         # currentAction
         if(variables[i] == 'currentAction'):
-          for j in range(30):
+          for j in range(60):
             try:
               if(len(values) >= i+1) and (values[i] == 'Q'):
                 logger.info('Shutting down session')
@@ -388,13 +357,16 @@ class RIPOctave(RIPGeneric):
               if (j == 0) and (len(values) >= i+1):
                 logger.info('Sending command: ' + self.logAction(str(values[i])))
               else: 
-                logger.warning('Connecting... (' + repr(j) + ')')
+                logger.warning('Esperando comunicación con Arduino... (' + repr(j) + ')')
               if (len(values) >= i+1):
-                octave.arduinoProcessInputs(values[i])
+                self.octave.eval("arduinoProcessInputs('" + values[i] + "')")
                 self.captureFrames = True
+                if (j == 0) and (len(values) >= i+1):
+                  logger.warning('Comunicación con Arduino establecida.')
               break
             except Exception as e:
-              #logger.error("set(currentAction) Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
+              if DEBUG:
+                logger.error("set(currentAction) Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
               time.sleep(1)
               pass
         # octaveCode
@@ -426,8 +398,8 @@ class RIPOctave(RIPGeneric):
             #logger.info('Setting user ID to: ' + str(values[i]))
             self.userId = str(values[i])
             self.resultFilePath = CACHEBASEPATH + self.userId + "_" + self.currentSessionTimestamp + '.mat'
-            octave.push('userId', self.userId)
-            octave.push('cachePath', self.resultFilePath)
+            self.octave.push('userId', self.userId)
+            self.octave.push('cachePath', self.resultFilePath)
       except Exception as e:
         logger.error("set() Error: " + str(e) + "; Traceback: " + str(traceback.format_exc()))
         
@@ -443,7 +415,7 @@ class RIPOctave(RIPGeneric):
       try:
         logger.info("get(): INIT")
         logger.debug("get(): octave.pull(" + str(name) + ")")
-        toReturn[name] = octave.pull(name)
+        toReturn[name] = self.octave.pull(name)
         logger.debug("get(): " + str(name) + " = " + str(toReturn[name]))
       except Exception as e:
         logger.error("get(): Error: " + str(e))
@@ -462,7 +434,7 @@ class RIPOctave(RIPGeneric):
     time, TS, DT, CD, CI, MP, MS, IrF, TSM, Message, KinectImageBase64, CeilingImageBase64, Ready, octaveLog.
     '''
     returnValue = self.previousMessage
-    self.Ready = octave.isKinectReady()
+    self.Ready = self.octave.isKinectReady()
     logger.debug("getValuesToNotify(): getDepthImageBase64(): BEGIN")
     if self.captureFrames == True:
       try:
@@ -476,7 +448,7 @@ class RIPOctave(RIPGeneric):
         pass
 
     try:
-      result = octave.updateGlobals()
+      result = self.octave.updateGlobals()
       self.getGlobalVariables(result)
 
       if (len(self.previousMessage) == 2) and (len(self.previousMessage[1]) == 16) and (self.TS != self.previousMessage[1][1]):
@@ -496,6 +468,46 @@ class RIPOctave(RIPGeneric):
       else:
         logger.error("getValuesToNotify(general): Error executing method: " + str(e))
     return returnValue
+
+  def octaveSetup(self):
+    o = Oct2Py(None, logger, DEFAULT_EXECUTION_TIMEOUT)
+
+    o.eval('global dataArray;')
+    o.eval('global messageArray;')
+    o.eval('global TS;')
+    o.eval('global DT;')
+    o.eval('global CD;')
+    o.eval('global CI;')
+    o.eval('global MP;')
+    o.eval('global MS;')
+    o.eval('global IrF;')
+    o.eval('global IrR;')
+    o.eval('global IrL;')
+    o.eval('global Ready;')
+    o.eval('global octaveCode;')
+    o.eval('global debugLevel;')
+    o.eval('global cachePath;')
+    o.eval('global userId;')
+    
+    o.push("Ready", 0)
+
+    if DEBUG:
+      o.push("debugLevel", 5)
+    else:
+      o.push("debugLevel", 2)
+    
+    #o.genpath(OCTAVEPATH)
+    o.addpath(OCTAVEPATH)
+    o.addpath(OCTAVEPATH + '/common')
+    o.addpath(OCTAVEPATH + '/kinect')
+    o.addpath(OCTAVEPATH + '/arduino')
+    o.addpath(OCTAVEPATH + '/aruco')
+    o.addpath(OCTAVEPATH + '/user')
+
+    p = o.path()
+    logger.info("Path: " + p)
+
+    return o
 
   def getLog(self):
     '''
@@ -535,7 +547,7 @@ class RIPOctave(RIPGeneric):
       logger.info("Sending code to robot with timeout = " + str(timeout) + ": \n\n" + repr(code) + "\n\n")
       with open(USERCODEPATH, 'w') as f:
         f.write(code)
-      octave.feval('executeOctaveCode', '', timeout)
+      self.octave.feval('executeOctaveCode', '', timeout)
     except TimeoutError as exc:
       logger.error("Timeout")
       self.start()
@@ -549,7 +561,8 @@ class RIPOctave(RIPGeneric):
 
   def keepAlive(self):
     try:
-      octave.arduinoProcessInputs('K')
+      #self.octave.arduinoProcessInputs('K')
+      self.octave.eval("arduinoProcessInputs('K')")
       self.KinectImageBase64 = self.getDepthImageBase64()
       self.CeilingImageBase64 = self.getCeilingImageBase64()
     except:
@@ -611,7 +624,7 @@ class RIPOctave(RIPGeneric):
         logger.debug("getValuesToNotify(IrL): (" + str(result.item(8)) + ", " + str(type(result.item(8))) + ")")
     try:
       logger.debug("octave.getLastMessage(): BEGIN")
-      msg = octave.getLastMessage()
+      msg = self.octave.getLastMessage()
       logger.debug("octave.getLastMessage(): END: (" + str(msg) + ", " + str(type(msg)) + ")")
       if isinstance(msg, oio.Cell) and msg.size == 2:
         self.TSM = int(msg.item(0))
@@ -647,7 +660,7 @@ class RIPOctave(RIPGeneric):
     depthImageBase64 = ''
     try:
       logger.debug("getDepthImageBase64(imageArray): BEGIN")
-      retrieved = octave.getDepthImage()
+      retrieved = self.octave.getDepthImage()
 
       if retrieved == 1 and os.path.exists(KINECT_PNGIMAGEPATH):
         try:
@@ -672,7 +685,7 @@ class RIPOctave(RIPGeneric):
     ceilingImageBase64 = ''
     try:
       logger.debug("getCeilingImageBase64(imageArray): BEGIN")
-      retrieved = octave.getMarkerInfo(1)
+      retrieved = self.octave.getMarkerInfo(1)
 
       if os.path.exists(ARUCO_PNGIMAGEPATH):
         try:
@@ -698,7 +711,7 @@ class RIPOctave(RIPGeneric):
     imageBase64 = ''
     try:
       logger.debug("getImageBase64(imageArray): BEGIN")
-      retrieved = octave.getDepthImage()
+      retrieved = self.octave.getDepthImage()
 
       if retrieved == 1 and os.path.exists(imagePath):
         bufferedImage = BytesIO()
@@ -747,3 +760,4 @@ class RIPOctave(RIPGeneric):
       'P' : 'STOP ENGINES (MANUAL)',
       'K' : 'KEEP ALIVE'
     }.get(action, "NO ACTION")
+
