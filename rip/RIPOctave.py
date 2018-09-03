@@ -25,7 +25,7 @@ import _thread
 import subprocess
 
 DEBUG = False
-DEFAULT_EXECUTION_TIMEOUT = 60
+DEFAULT_EXECUTION_TIMEOUT = 180
 OCTAVEPATH = '/opt/robot/octave'
 USERCODEPATH='/opt/robot/octave/user/usercode.m'
 CACHEBASEPATH = '/var/robot/cache/cache_'
@@ -361,8 +361,6 @@ class RIPOctave(RIPGeneric):
               if (len(values) >= i+1):
                 self.octave.eval("arduinoProcessInputs('" + values[i] + "')")
                 self.captureFrames = True
-                if (j == 0) and (len(values) >= i+1):
-                  logger.warning('Comunicación con Arduino establecida.')
               break
             except Exception as e:
               if DEBUG:
@@ -504,9 +502,6 @@ class RIPOctave(RIPGeneric):
     o.addpath(OCTAVEPATH + '/aruco')
     o.addpath(OCTAVEPATH + '/user')
 
-    p = o.path()
-    logger.info("Path: " + p)
-
     return o
 
   def getLog(self):
@@ -582,7 +577,8 @@ class RIPOctave(RIPGeneric):
     txt += "IrF: " + "{:.0f}".format(self.IrF) + ", "
     txt += "IrR: " + "{:.0f}".format(self.IrR) + ", "
     txt += "IrL: " + "{:.0f}".format(self.IrL) + "]"
-    logger.info(txt)
+    if self.TS > 0:
+      logger.info(txt)
 
   def getGlobalVariables(self, result):
     '''
