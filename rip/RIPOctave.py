@@ -324,6 +324,7 @@ class RIPOctave(RIPGeneric):
         os.remove(RESULTMATFILEPATH)
       self.octave.push("cachePath", self.resultFilePath)
       self.octave.push("userId", self.userId)
+      #logger.info("USERID: " + repr(self.userId))
       self.octave.robotSetup()
       time.sleep(10)
     except Exception as e:
@@ -433,7 +434,7 @@ class RIPOctave(RIPGeneric):
     '''
     returnValue = self.previousMessage
     self.Ready = self.octave.isKinectReady()
-    self.octave.eval("arduinoProcessInputs('K')")
+    self.octave.eval("arduinoProcessInputs('D0I0', 0.2)")
     logger.debug("getValuesToNotify(): getDepthImageBase64(): BEGIN")
     if self.captureFrames == True:
       try:
@@ -542,6 +543,8 @@ class RIPOctave(RIPGeneric):
     try:
       logger.info("Sending code to robot with timeout = " + str(timeout) + ": \n\n" + repr(code) + "\n\n")
       with open(USERCODEPATH, 'w') as f:
+        code = "try\n" + code
+        code = code + "\ncatch err\n    if (debugLevel >= 2); fprintf('[ERROR] executeOctaveCode(): %s\\n', err.message); fflush(stdout); endif;\npause(0.1);\nend_try_catch"
         f.write(code)
       self.octave.feval('executeOctaveCode', '', timeout)
     except TimeoutError as exc:
@@ -558,7 +561,7 @@ class RIPOctave(RIPGeneric):
   def keepAlive(self):
     try:
       #self.octave.arduinoProcessInputs('K')
-      self.octave.eval("arduinoProcessInputs('K')")
+      self.octave.eval("arduinoProcessInputs('D0I0', 0.2)")
       self.KinectImageBase64 = self.getDepthImageBase64()
       self.CeilingImageBase64 = self.getCeilingImageBase64()
     except:
