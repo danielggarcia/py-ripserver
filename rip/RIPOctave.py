@@ -433,6 +433,7 @@ class RIPOctave(RIPGeneric):
     '''
     returnValue = self.previousMessage
     self.Ready = self.octave.isKinectReady()
+    self.octave.eval("arduinoProcessInputs('K')")
     logger.debug("getValuesToNotify(): getDepthImageBase64(): BEGIN")
     if self.captureFrames == True:
       try:
